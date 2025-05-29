@@ -1,0 +1,21 @@
+{
+    "name": "flourish/flourish-woocommerce-plugin",
+    "description": "A WooCommerce plugin for your Flourish data.",
+    "type": "wordpress-plugin",
+    "license": "Copyright",
+    "authors": [
+        {
+            "name": "Flourish Software",
+            "email": "info@flourishsoftware.com"
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "FlourishWooCommercePlugin\\": "src/"
+        }
+    },
+    "require": {
+        "php": ">=7.0",
+        "yahnis-elsts/plugin-update-checker": "^5.3"
+    }
+}

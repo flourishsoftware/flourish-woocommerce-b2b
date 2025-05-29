@@ -1,0 +1,337 @@
+/* style.css */
+
+.toggle-container {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+}
+
+.toggle-container input[type="radio"] {
+    display: none;
+}
+
+.toggle-container h4 {
+    margin-right:10px;
+}
+
+.toggle-container label {
+    padding: 5px 14px;
+    margin: 0px;
+    border: 2px solid #ccc;
+    background-color: #f0f0f0;
+    transition: background-color 0.3s, color 0.3s, border-color 0.3s;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.toggle-container input[type="radio"]:checked + label {
+    background-color: #007cba; /* WooCommerce blue */
+    color: white;
+    border-color: #007cba;
+}
+
+.toggle-container label:first-of-type {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.toggle-container label:last-of-type {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    margin-left: -2px;
+}
+.wc-block-components-text-input input[type=date] {
+    background-color: #fff;
+    border: 1px solid hsla(0, 0%, 7%, .8);
+    border-radius: 4px;
+    box-sizing: border-box;
+    color: #2b2d2f;
+    font-family: inherit;
+    font-size: 1em;
+    height: 50px;
+    line-height: 1em;
+    margin: 0;
+    min-height: 0;
+    padding: 1em .5em;
+    width: 49%;
+}
+.wc-block-components-form .wc-block-components-text-input.is-active input[type=date]
+{
+    padding: 1.5em .5em .5em;
+}
+.wc-block-components-form .wc-block-components-text-input input[type=date]:focus
+{
+    box-shadow: 0 0 0 1px #50575e;
+    color: #2b2d2f;
+    outline: 0
+}
+input[type="date"] {
+    appearance: none; /* Removes the default browser styles */
+    -webkit-appearance: none; /* Safari-specific */
+    -moz-appearance: none; /* Firefox-specific */
+    border: 1px solid #ccc;
+    padding: 8px;
+    border-radius: 4px;
+}
+/* License field display in checkout page*/
+
+.is-large .wc-block-checkout__billing-fields .wc-block-components-address-form .wc-block-components-license-input
+{
+    box-sizing: border-box;
+    flex: 1 0 calc(50% - 12px);
+}
+.wc-block-components-license-input svg
+{
+    fill: #2b2d2f;
+    pointer-events: none;
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+} 
+/* Hide Billing & shipping company name optional text in  checkout page*/ 
+#billing_company_field span.optional,#shipping_company_field span.optional  {
+    display: none;
+}
+
+/* Style for the loading spinner - checkout page*/
+#loading_overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5); /* Semi-transparent dark background */
+    display: none; /* Hidden by default */
+    justify-content: center;
+    align-items: center;
+    z-index: 9999; /* Ensure it sits above other content */
+    text-align: center;
+    display: flex; /* Ensures flexbox is used for centering */
+    flex-direction: column; /* Stack spinner and message vertically */
+}
+
+.spinner {
+    border: 8px solid #f3f3f3; /* Light gray background */
+    border-top: 8px solid #6dc22e; /* Blue spinner */
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    animation: spin 2s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loading-message {
+    color: white;
+    font-size: 18px;
+    margin-top: 20px; /* Adds spacing between spinner and message */
+}
+
+.add_variation_manually {
+    pointer-events: none; /* Prevent clicks */
+    opacity: 0.5; /* Dim the button to look disabled */
+    cursor: not-allowed; /* Change cursor to indicate disabled state */
+}
+ 
+
+#out-of-stock-container .woocommerce-error {
+    background-color: #f2dede;
+    border-color: #ebccd1;
+    color: #a94442;
+    padding: 10px;
+    border-radius: 4px;
+    margin-top: 15px;
+}
+
+.single_add_to_cart_button:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+
+/* waring message show flourish settings page*/
+.flourish_setting_warn{background-color: #fff3cd;
+    border-left: 5px solid #dba617;
+    padding: 15px;
+    margin-top: 15px;
+    font-weight: normal;
+    color: #000000;
+    border-radius: 4px;
+    font-size: 16px;
+    line-height: 1.6;
+}
+/* Destination Management - Destination Select box */
+.selected-items-container {
+border: 1px solid #8c8f94dd;
+padding: 8px;
+min-height: 38px;
+overflow-y: auto;
+background-color: #fff; 
+border-radius: 4px;
+}
+
+.selected-item {
+background-color: #f1f1f1;
+border: 1px solid #ddd;
+border-radius: 3px;
+padding: 4px 8px;
+margin: 0 5px 5px 0;
+display: inline-flex;
+align-items: center;
+max-width: 100%;
+white-space: nowrap;
+overflow: hidden;
+text-overflow: ellipsis;
+}
+
+.item-text {
+margin-right: 5px;
+max-width: calc(100% - 15px);
+overflow: hidden;
+text-overflow: ellipsis;
+}
+
+.remove-item {
+color: #999;
+font-weight: bold;
+text-decoration: none;
+margin-left: 5px;
+font-size: 16px;
+line-height: 2;
+}
+
+.remove-item:hover {
+color: #ca4a1f;
+}
+
+.no-selections {
+color: #999;
+}
+
+/* Select2 style adjustments */
+.select2-container--default .select2-selection--single {
+border-color: #ddd;
+}
+
+.select2-dropdown {
+border-color: #ddd;
+}
+
+/* Destination Toggle Styles */
+.destination-management-wrapper .toggle-container {
+    display: flex;
+    margin-bottom: 15px;
+    border-radius: 4px;
+    overflow: hidden;
+    width: fit-content;
+    border: 1px solid #ddd;
+}
+
+.destination-management-wrapper .toggle-container .button {
+    border: none;
+    background: #f5f5f5;
+    color: #555;
+    padding: 8px 15px;
+    cursor: pointer;
+    font-weight: normal;
+    margin: 0;
+    border-radius: 0;
+    box-shadow: none;
+    transition: all 0.2s ease;
+    height: auto;
+    line-height: normal;
+    border-right: 1px solid #ddd;
+}
+
+.destination-management-wrapper .toggle-container .button:last-child {
+    border-right: none;
+}
+
+.destination-management-wrapper .toggle-container .button.active {
+    background-color: #0073aa;
+    color: white;
+    font-weight: 500;
+}
+
+.destination-management-wrapper .toggle-container .button:hover:not(.active) {
+    background-color: #e9e9e9;
+}
+
+ .hidden-section {
+    display: none;
+}
+
+.visible-section {
+    display: block;
+}
+
+ /* Custom styles for destination dropdown */ 
+    .destination-wrapper { 
+        margin-bottom: 20px;
+        position: relative; /* Added to help with positioning */
+    } 
+     
+    #destination_field .select2-container--default .select2-selection--single { 
+        height: 40px; 
+        border-radius: 4px; 
+        border: 1px solid #d9d9d9; 
+    } 
+     
+    #destination_field .select2-container--default .select2-selection--single .select2-selection__rendered { 
+        line-height: 40px; 
+        padding-left: 12px; 
+    } 
+     
+    #destination_field .select2-container--default .select2-selection--single .select2-selection__arrow { 
+        height: 38px; 
+    } 
+     
+    /* Fix dropdown positioning */
+    body .select2-container--default .select2-results > .select2-results__options {
+        max-height: 250px;
+        overflow-y: auto;
+    }
+    
+    body .select2-dropdown {
+        border: 1px solid #d9d9d9;
+        border-radius: 4px;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+    }
+     
+    body .select2-search--dropdown { 
+        padding: 8px; 
+    } 
+     
+    body .select2-container--default .select2-search--dropdown .select2-search__field { 
+        border: 1px solid #d9d9d9; 
+        border-radius: 4px; 
+        padding: 6px; 
+    } 
+    
+    /* Ensure the dropdown has proper width */
+    body .select2-container {
+        width: 100% !important;
+    }
+     
+    #destination_field .woocommerce-error { 
+        margin: 0; 
+        background-color: #f8d7da; 
+        color: #721c24; 
+        border: 1px solid #f5c6cb; 
+        border-radius: 4px; 
+        margin-top: 5px; 
+        font-size: 0.85em; 
+    }
+    
+    /* Fix the highlighted option background */
+    body .select2-container--default .select2-results__option--highlighted[aria-selected] {
+        background-color: #fa6c48;
+        color: white;
+    }

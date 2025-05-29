@@ -1,0 +1,249 @@
+/* save-cart-style.css 
+* Multi-cart save/load/delete button style
+*/
+#mc-saved-carts-section .mc-load-cart-btn, #mc-save-cart-btn, #mc-update-saved-cart {    
+    background-color: #11a24a;
+    border: none;
+    color: white;
+    padding: 8px 15px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 14px;
+    margin: 5px 3px;
+    transition-duration: 0.4s;
+    cursor: pointer;
+}
+
+#mc-saved-carts-section .mc-load-cart-btn:hover {
+    background-color: #004903; 
+    color: #fff;
+}
+#mc-save-cart-btn:hover {
+    background-color: #004903; 
+    color: #fff;    
+}
+#mc-update-saved-cart:hover {
+    background-color: #004903; 
+    color: #fff; 
+}
+
+#mc-saved-carts-section .mc-load-cart-btn:active {
+    background-color: #2196F3;
+}
+
+#mc-saved-carts-section .mc-delete-cart-btn {    
+    background-color: #E53935;
+    border: none;
+    color: white;
+    padding: 8px 15px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 14px;
+    margin: 5px 3px;
+    transition-duration: 0.4s;
+    cursor: pointer;
+}
+
+#mc-saved-carts-section .mc-delete-cart-btn:hover {    
+    background-color: #B71C1C; 
+    color: #fff; 
+    /* border: 1px solid; */
+}
+
+#mc-saved-carts-section .mc-delete-cart-btn:active {
+    background-color: #B71C1C;
+}
+
+/* Input Box Cart */
+#mc-cart-name {
+    border: 1px solid;
+    padding: 8px 15px;
+}
+
+/* Save button */
+#mc-save-cart-submit {
+    background-color: #11a24a;
+    border: none;
+    color: white;
+    padding: 8px 15px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 14px;
+    margin: 5px 3px;
+    transition-duration: 0.4s;
+    cursor: pointer;
+}
+
+#mc-save-cart-submit:hover {
+    background-color: #004903;
+    /* border: 1px solid; */
+    color: #fff;
+}
+
+/* Saved Cart Container */
+#mc-saved-carts-section{
+    border: 1px solid #9e9e9e66;
+    padding: 10px;
+    margin: 2px 0 5px;
+    border-radius: 5px;
+}
+
+#mc-saved-carts-section p{
+    color: #dd5151;
+}
+
+/* Logged-in alert message box style */
+.alert-box-message {
+    border: 1px solid #ffd5d5;
+    padding: 5px 10px;
+    color: #dd5151;
+    border-radius: 5px;
+    width: fit-content;
+}
+
+.alert-save-cart-box-message {
+    border: 1px solid #ffdba6;
+    padding: 5px 10px;
+    color: #d39f01;
+    border-radius: 5px;
+    width: fit-content;
+}
+
+/* Login link style */
+.log-link {
+    color: #0d47a1 !important;
+    font-weight: 600;
+    text-decoration: underline !important;
+}
+
+.single_add_to_cart_button.disabled {
+    pointer-events: none;
+    background-color: #cccccc; /* Light gray */
+    color: #666666; /* Dark gray text */
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+/* Basic Toast Container */
+.toast-container {
+    position: fixed;
+    top: 20px; /* Toast will appear at the top */
+    right: 20px; /* Position it on the right side of the screen */
+    z-index: 9999;
+    max-width: 400px;
+    width: 100%;
+    pointer-events: none;
+}
+
+/* Individual Toast Styling */
+.toast {
+    display: flex;
+    align-items: center;
+    background-color: #333;
+    color: white;
+    padding: 10px 20px;
+    margin-bottom: 10px;
+    border-radius: 5px;
+    font-size: 1rem;
+    opacity: 0;
+    transform: translateY(-20px);
+    transition: opacity 0.3s, transform 0.3s;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Icon inside the toast */
+.toast .toast-icon {
+    margin-right: 10px;
+    font-size: 1.5rem;
+}
+
+/* Different Toast Types */
+.toast-info {
+    background-color: #17a2b8; /* Blue for info */
+}
+
+.toast-success {
+    background-color: #28a745; /* Green for success */
+}
+
+.toast-warning {
+    background-color: #ffc107; /* Yellow for warning */
+}
+
+.toast-error {
+    background-color: #dc3545; /* Red for error */
+}
+
+/* Toast Button (optional) */
+.toast .toast-button {
+    margin-left: 10px;
+    background: none;
+    border: none;
+    color: white;
+    font-size: 1rem;
+    cursor: pointer;
+}
+
+.toast .toast-button:hover {
+    color: #ddd;
+}
+
+/* Animation when the toast appears */
+.toast.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+/* This class will hide the element */
+.mc-hidden {
+    display: none;
+}
+.woocommerce-order-received table.woocommerce-table.woocommerce-table--order-details .order-actions--heading, .woocommerce-order-received table.woocommerce-table.woocommerce-table--order-details .pay {
+    display: none;
+}
+
+/* CSS Button disabled state */
+.mc-btn-loading {
+    opacity: 1 !important; /* Reduce opacity but keep text readable */
+    pointer-events: none !important; /* Disable clicking */
+}
+.mc-btn-loading span {
+    margin-right: 5px;
+}
+
+/* Loading-Spinner */
+.frh-loader {
+    width: 20px;
+    height: 15px;
+    display: inline-block;
+    position: relative;
+  }
+  .frh-loader::after,
+  .frh-loader::before {
+    content: '';  
+    box-sizing: border-box;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #1b1b1b;
+    position: absolute;
+    left: 0;
+    top: 0;
+    animation: animloader 2s linear infinite;
+  }
+  .frh-loader::after {
+    animation-delay: 1s;
+  }
+  
+  @keyframes animloader {
+    0% {
+      transform: scale(0);
+      opacity: 1;
+    }
+    100% {
+      transform: scale(1);
+      opacity: 0;
+    }
+  }
