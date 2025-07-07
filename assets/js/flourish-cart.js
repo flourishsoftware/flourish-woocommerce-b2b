@@ -385,7 +385,7 @@ jQuery(document).ready(function ($) {
 });
 jQuery(document).on('click', '.remove', function(e) {
     e.preventDefault();
- 
+ console.log("jay");
     let productId = jQuery(this).data('product_id'); 
     let cartItemKey = new URL(jQuery(this).attr('href')).searchParams.get('remove_item'); 
     let nonce = stockAvailability.nonce;

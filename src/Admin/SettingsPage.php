@@ -54,7 +54,7 @@ class SettingsPage
                         return false; // Prevent deletion of order items for draft orders
                     }
                     return $delete;
-                }, 10, 1);
+                }, 10, 2);
                 
                 
             });  
@@ -241,7 +241,7 @@ class SettingsPage
         $reserved_stock = (int) get_post_meta($product_id, '_reserved_stock', true);
         
         if ($inventory_quantity >= 0) {
-            $woocommerce_stock = $inventory_quantity - $reserved_stock;
+            $woocommerce_stock = abs($inventory_quantity - $reserved_stock);
         } else {
             // Skip calculation or set a default value
             $woocommerce_stock = 0; // or null if you want to ignore
@@ -359,16 +359,17 @@ class SettingsPage
         // Add order type settings
         $order_type = $this->existing_settings['flourish_order_type'] ?? '';
         $order_status = $this->existing_settings['flourish_order_status'] ?? '';
+        $woocommerce_order_status = $this->existing_settings['woocommerce_order_status'] ?? ''; 
         add_settings_field(
             'flourish_order_type',
-            'Order Type',
-            function () use ($order_type, $order_status) {
-                $this->render_flourish_order_type($order_type, $order_status);
+            'Order Type', 
+            function () use ($order_type, $order_status,$woocommerce_order_status) {
+                $this->render_flourish_order_type($order_type, $order_status,$woocommerce_order_status);
             },
             'flourish-woocommerce-plugin-settings',
-            'flourish_woocommerce_plugin_section'
-        );
-
+            'flourish_woocommerce_plugin_section' 
+        ); 
+        
         // Add item sync options settings
         $item_sync_options = $this->existing_settings['item_sync_options'] ?? [];
         add_settings_field(
@@ -470,6 +471,9 @@ class SettingsPage
         $sanitized_settings['flourish_order_type'] = !empty($settings['flourish_order_type']) ? sanitize_text_field($settings['flourish_order_type']) : 'retail';
         // Default to created in retail order status
         $sanitized_settings['flourish_order_status'] = !empty($settings['flourish_order_status']) ? sanitize_text_field($settings['flourish_order_status']) : 'created';
+       // Handle WooCommerce order status for outbound orders
+        $sanitized_settings['woocommerce_order_status'] = !empty($settings['woocommerce_order_status']) ? sanitize_text_field($settings['woocommerce_order_status']) : 'draft';
+  
         // Default to production API
         $sanitized_settings['url'] = !empty($settings['url']) ? esc_url_raw($settings['url']) : 'https://app.flourishsoftware.com';
 
@@ -540,7 +544,7 @@ class SettingsPage
     }
 
     //Render flourish order type retail and outbound in setting page
-    public function render_flourish_order_type($setting_value,$order_status_value)
+    public function render_flourish_order_type($setting_value,$order_status_value,$woocommerce_order_status)
     {
         ?>
         <input type="radio" id="flourish_order_type_retail" name="flourish_woocommerce_plugin_settings[flourish_order_type]" value="retail" <?php checked($setting_value, 'retail'); ?> <?php checked($setting_value, ''); ?> />
@@ -561,6 +565,13 @@ class SettingsPage
         <br>
         <input type="radio" id="flourish_order_type_outbound" name="flourish_woocommerce_plugin_settings[flourish_order_type]" value="outbound" <?php checked($setting_value, 'outbound'); ?> />
         <label for="flourish_order_type_outbound">Outbound</label>
+        <div class="toggle-container">
+        <h4>Outbound Order status:</h4>
+        <input type="radio" id="flourish_order_type_draft" name="flourish_woocommerce_plugin_settings[woocommerce_order_status]" value="draft" <?php checked($woocommerce_order_status, 'draft'); ?> <?php checked($woocommerce_order_status, ''); ?> />
+        <label for="flourish_order_type_draft">Draft</label>
+        <input type="radio" id="flourish_order_type_processing" name="flourish_woocommerce_plugin_settings[woocommerce_order_status]" value="processing" <?php checked($woocommerce_order_status, 'processing'); ?> />
+        <label for="flourish_order_type_processing">Processing</label>
+        </div>
         <p class="description">Orders will be created in Flourish as outbound orders from destinations.</p>
         <ul>
             <li>• License will be required and collected from the destination</li>
@@ -911,7 +922,7 @@ class SettingsPage
         $flourish_api = $this->get_flourish_api();
         return $flourish_api->fetch_products($this->existing_settings['filter_brands'] ?? false, $this->existing_settings['brands'] ?? []); // Call fetch_products, which now handles processing
     }
-
+   
     public function get_facilities()
     {
         // Fetch the API object

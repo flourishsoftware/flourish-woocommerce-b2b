@@ -27,6 +27,37 @@ class FlourishAPI
         $this->auth_header = base64_encode($username . ':' . $api_key);
     }
     /**
+     * Fetch inventory
+     */
+    public function fetch_product_by_id($item_id)
+    {
+        $api_url = $this->url . "/external/api/v1/items?item_id=$item_id";
+
+        $headers = [
+            'Authorization: Basic ' . $this->auth_header
+        ];
+
+        // Use the HttpRequestHelper for the API call
+        try
+        {
+         $response_http = HttpRequestHelper::make_request($api_url, 'GET', $headers);
+         $response_data = HttpRequestHelper::validate_response($response_http);
+        } catch (\Exception $e) {
+            throw new \Exception("Error fetching inventory: " . $e->getMessage());
+        }
+        $inventory_data = $this->fetch_inventory($item_id); 
+        $data = $response_data['data'][0];
+        if (isset($response_data['data']) && is_array($response_data['data'])) {
+            $inventory_quantity = $inventory_data[0]['sellable_qty'];
+            $response_data['data'][0]['inventory_quantity'] = $inventory_data[0]['sellable_qty'];
+        } 
+        $flourish_items = new FlourishItems($response_data['data']);
+        $webhook_status = true;
+        $imported_count = $flourish_items->save_as_woocommerce_products($this->existing_settings['item_sync_options'] ?? [],$webhook_status);
+        error_log("Batch imported count: " . $imported_count);
+    
+    }
+    /**
      * Fetches products based on optional brand filtering.
      *
      * This function retrieves products, with the option to filter results by specified brands.
@@ -106,7 +137,7 @@ class FlourishAPI
         $inventory_map = [];
         $limit = 50; // API supports only 50 items per request
         $chunks = array_chunk($item_ids, $limit);
-    
+        
         foreach ($chunks as $batch) {
             $api_url = $this->url . "/external/api/v1/inventory/summary";
             $headers = [
@@ -145,7 +176,8 @@ class FlourishAPI
     private function process_batch($batch) {
         try {
             $flourish_items = new FlourishItems($batch);
-            $imported_count = $flourish_items->save_as_woocommerce_products($this->existing_settings['item_sync_options'] ?? []);
+            $webhook_status = false;
+            $imported_count = $flourish_items->save_as_woocommerce_products($this->existing_settings['item_sync_options'] ?? [],$webhook_status);
             error_log("Batch imported count: " . $imported_count);
     
             unset($flourish_items);
@@ -404,6 +436,7 @@ class FlourishAPI
 
             $headers = [
                 'Authorization: Basic ' . $this->auth_header,
+                 'FacilityID: ' . $this->facility_id,
             ];
             // Use the HttpRequestHelper for the API call
             try
@@ -477,30 +510,48 @@ class FlourishAPI
         return false;
     }
 
-    public function fetch_destination_by_facility_name()
-    {
-       
-        $api_url = $this->url . "/external/api/v1/destinations";
-
+     public function fetch_destination_by_facility_name()
+{
+    $all_destinations = [];
+    $offset = 0;
+    $limit = self::API_LIMIT;
+    
+    do {
+        // Fix the API URL construction - there was a syntax error in your original code
+        $api_url = $this->url . "/external/api/v1/destinations?offset=" . $offset . "&limit=" . $limit;
+        
         $headers = [
             'Authorization: Basic ' . $this->auth_header,
         ];
-
+        
         // Use the HttpRequestHelper for the API call
-        try
-        {
-         $response_http = HttpRequestHelper::make_request($api_url, 'GET', $headers);
-         $response_data = HttpRequestHelper::validate_response($response_http);
+        try {
+            $response_http = HttpRequestHelper::make_request($api_url, 'GET', $headers);
+            $response_data = HttpRequestHelper::validate_response($response_http);
         } catch (\Exception $e) {
             throw new \Exception("Error fetching destination by facility_name: " . $e->getMessage());
         }
-
+        
+        // Check if we got data
         if (isset($response_data['data']) && is_array($response_data['data']) && count($response_data['data'])) {
-        // Return all destinations instead of just the first one
-        return $response_data['data'];
+            // Merge current batch with all destinations
+            $all_destinations = array_merge($all_destinations, $response_data['data']);
+            
+            // If we got less than the limit, we've reached the end
+            $has_more_data = count($response_data['data']) == $limit;
+            
+            // Increment offset for next batch
+            $offset += $limit;
+        } else {
+            // No more data
+            $has_more_data = false;
         }
-        return false;
-    }
+        
+    } while ($has_more_data);
+    
+    // Return all destinations or false if none found
+    return count($all_destinations) > 0 ? $all_destinations : false;
+}
 
     public function fetch_uoms()
     {
@@ -543,31 +594,31 @@ class FlourishAPI
    }
  
 
-    // Helper method to get destination options
-    public function get_destination_options() {
+    
+   // Helper method to get destination options
+public function get_destination_options() 
+{
     // Initialize API
-    // You can use the same logic from your existing code to generate this
     $destinations = $this->fetch_destination_by_facility_name();
     $destination_options = [];
     
     if ($destinations && is_array($destinations)) {
         // Prepare array for sorting
-         // Prepare array for sorting
-    $temp_array = [];
-    foreach ($destinations as $destination) {
-        $id = $destination['id'];
-        // Use name instead of alias since alias is empty
-        // Check if alias is empty, use name as fallback
-        $name = !empty($destination['alias']) ? $destination['alias'] : $destination['name'];
-        $license_number = !empty($destination['license_number']) ? $destination['license_number'] : 'No License';
-        // Format: "Name - License"
-        $display_text = $name . ' (' . $license_number . ')';
-        $temp_array[] = [
-            'id' => $id,
-            'display_text' => $display_text,
-            'sort_key' => $name // Use name for sorting
-        ];
-    }
+        $temp_array = [];
+        foreach ($destinations as $destination) {
+            $id = $destination['id'];
+            // Use name instead of alias since alias is empty
+            // Check if alias is empty, use name as fallback
+            $name = !empty($destination['alias']) ? $destination['alias'] : $destination['name'];
+            $license_number = !empty($destination['license_number']) ? $destination['license_number'] : 'No License';
+            // Format: "Name - License"
+            $display_text = $name . ' (' . $license_number . ')';
+            $temp_array[] = [
+                'id' => $id,
+                'display_text' => $display_text,
+                'sort_key' => $name // Use name for sorting
+            ];
+        }
         
         // Sort the array by name (alphanumerically)
         usort($temp_array, function($a, $b) {
@@ -582,6 +633,7 @@ class FlourishAPI
     
     return $destination_options;
 }
+
 
    /**
      * Get the order by id.

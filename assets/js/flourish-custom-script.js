@@ -179,4 +179,36 @@ jQuery(document).on('click', '.delete-case-size', function (e) {
     });
     //-----------------Case Size js Start-----------------
 });
+jQuery(document).ready(function($) {
+  // Detect form submission instead of button click
+  $('form').on('submit', function() {
+    // Disable both Apply buttons immediately after submit starts
+    $('#doaction, #doaction2').prop('disabled', true);
+  });
+   // For WooCommerce Order Update button
+  $('#post').on('submit', function() {
+    const $btn = $('#publish');
+    if ($btn.prop('disabled')) return false;
 
+    $btn.prop('disabled', true).val('Updating...');
+  });
+
+  
+});
+jQuery(document).ready(function($) {
+  $('#woocommerce-order-actions button').on('click', function(e) {
+    const $btn = $(this);
+
+    // If already disabled, prevent any further action
+    if ($btn.prop('disabled')) {
+      e.preventDefault();
+      return false;
+    }
+
+    // Defer disabling slightly to let WooCommerce JS handlers finish
+    setTimeout(function() {
+      $btn.prop('disabled', true);
+      $btn.html('Processing...');
+    }, 50); // Let WooCommerce action fire first
+  });
+});

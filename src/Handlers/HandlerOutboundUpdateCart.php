@@ -36,8 +36,9 @@ class HandlerOutboundUpdateCart
         add_filter('woocommerce_cart_item_required_stock_is_not_enough', [$this, 'disable_stock_validation_on_cart_page'], 10, 3);
         add_action('woocommerce_before_checkout_process', [$this,'remove_stock_validation_on_proceed_to_checkout']);
         add_filter('woocommerce_valid_order_statuses_for_payment', [$this,'disable_pay_button_cod_orders'], 10, 2);
-    } 
- 
+           } 
+    
+
      public function disable_pay_button_cod_orders($statuses, $order) {
         if ($order && $order->get_payment_method() == 'cod' && in_array($order->get_status(), ['draft','failed'])) {
             return []; // Removes payment options for COD orders in Draft status
@@ -45,6 +46,7 @@ class HandlerOutboundUpdateCart
         return $statuses;
     }
     public function remove_stock_validation_on_proceed_to_checkout() {
+        
         // Remove stock hold for checkout process
         remove_filter('woocommerce_hold_stock_for_checkout', '__return_true');    
         // Remove stock validation filter
@@ -72,7 +74,20 @@ class HandlerOutboundUpdateCart
         if (!$product->is_in_stock()) {
             return $button; // Return the default button if the product is out of stock
         }
-    
+
+            // If stock management is enabled and backorders are enabled, skip stock checking
+        if ($this->should_manage_stock($product)) {
+            // Check if the simple product is already in the cart
+            foreach (WC()->cart->get_cart() as $cart_item) {
+                if ($cart_item['product_id'] == $product->get_id()) {
+                    // Replace "Add to Cart" with "View Cart" button
+                    $cart_url = wc_get_cart_url();
+                    return '<a href="' . esc_url($cart_url) . '" class="button wc-forward">' . __('View Cart', 'woocommerce') . '</a>';
+                }
+            }
+            return $button; // Return default "Add to Cart" button
+        }
+
         // Calculate the available stock for simple product
         $product_id = $product->get_id();
         $total_stock = $product->get_stock_quantity();
@@ -97,13 +112,18 @@ class HandlerOutboundUpdateCart
         return $button;
     }
     /* Logic for handling "Add to Cart" button */
-  /**
-     * Add custom JavaScript to product page
-     */
+  
     public function customize_single_product_page() {
         if (!is_product()) return;
         
         global $product;
+     // Check if stock management is enabled for this product
+
+     
+       if ($this->should_manage_stock($product)) {
+        return; // Skip stock management
+        }
+
         $stock_display_format = get_option('woocommerce_stock_format', 'always');
         $cart_items = $this->get_cart_items();
         ?>
@@ -160,7 +180,6 @@ class HandlerOutboundUpdateCart
                 updateProductDisplay: function(data) {
                     const $quantityInput = $('input.qty');
                     $quantityInput.attr('max', data.maxQty).val(1);
-
                     if (data.maxQty === 0) {
                         this.showOutOfStock();
                     } else {
@@ -325,35 +344,40 @@ class HandlerOutboundUpdateCart
      * Get product stock data
      */
     private function get_product_stock_data($product_id, $variation_id = null) {
-        // Determine which product to use
-        $product = $variation_id ? wc_get_product($variation_id) : wc_get_product($product_id);
-        
-        if (!$product) {
-            return false;
-        }
-
-        // Get stock quantities
-        $total_stock = $product->get_stock_quantity();
-        $held_stock = get_post_meta($product_id, '_held_stock', true) ?: 0;
-        $total_qty = $total_stock - $held_stock;
-
-        // For variations, calculate pack-based quantity
-        if ($variation_id && $product->is_type('variation')) {
-            $pack_size = $this->get_pack_size($product);
-            $max_qty = $total_qty > 0 ? floor($total_qty / $pack_size) : 0;
-        } else {
-            $max_qty = $total_qty;
-        }
-
-        // Generate stock message
-        $stock_message = $this->generate_stock_message($total_qty);
-
-        return [
-            'stock_quantity' => $total_qty,
-            'maxQty' => $max_qty,
-            'stockMessage' => $stock_message,
-        ];
+    // Determine which product to use
+    $product = $variation_id ? wc_get_product($variation_id) : wc_get_product($product_id);
+    $product_parent = wc_get_product($product_id);
+    if (!$product) {
+        return false;
     }
+    
+    // If stock management is enabled and  backorders are enabled, return unlimited stock
+    if ($this->should_manage_stock($product)) {
+        return;
+    }
+    
+    // Get stock quantities for managed products
+    $total_stock = $product_parent->get_stock_quantity();
+    $held_stock = get_post_meta($product_id, '_held_stock', true) ?: 0;
+    $total_qty = $total_stock - $held_stock;
+
+    // For variations, calculate pack-based quantity
+    if ($variation_id && $product->is_type('variation')) {
+        $pack_size = $this->get_pack_size($product);
+        $max_qty = $total_qty > 0 ? floor($total_qty / $pack_size) : 0;
+    } else {
+        $max_qty = $total_qty;
+    }
+
+    // Generate stock message
+    $stock_message = $this->generate_stock_message($total_qty);
+
+    return [
+        'stock_quantity' => $total_qty,
+        'maxQty' => $max_qty,
+        'stockMessage' => $stock_message,
+    ];
+}
 
     /**
      * Get pack size from variation attributes
@@ -418,49 +442,63 @@ class HandlerOutboundUpdateCart
  
 
     /* set the mix and max values in cart page */
-    public function change_variation_max_qty_in_cart($product_quantity, $cart_item_key, $cart_item)
-    {
-        $product_id = $cart_item['product_id']; 
-        $product = wc_get_product($product_id);
-        $total_qty=0;
-        $total_stock = $product->get_stock_quantity();
-        $held_stock= (int)get_post_meta($product_id, '_held_stock', true) ?: 0;
-        $total_qty=$total_stock-$held_stock;     
-        if (isset($cart_item['variation_id']) && $cart_item['variation_id'] !== 0 && isset($cart_item['variation']))
-        {
-            foreach ($cart_item['variation'] as $attribute_key => $attribute_value) { 
-                // Clean attribute key (remove "attribute_").
-                $taxonomy = str_replace('attribute_', '', $attribute_key);
-                // Get the term by its name in the corresponding taxonomy.
-                $term = get_term_by('name', $attribute_value, $taxonomy);
-                if ($term) {
-                    // Get the custom term quantity meta.
-                    $pack_size =get_term_meta($term->term_id, 'quantity', true) ?: 0;
-                    $total_cart_qty=($cart_item['quantity']*$pack_size)+$total_qty; 
-                    $max_qty=floor($total_cart_qty/$pack_size);  
-                }
-            }
-        }
-        else
-        {
-            $max_qty=$cart_item['quantity']+$total_qty;
-        }
+    public function change_variation_max_qty_in_cart($product_quantity, $cart_item_key, $cart_item) {
+    $product_id = $cart_item['product_id']; 
+    $product = wc_get_product($product_id);
 
-        $product_quantity = sprintf(
+    // If stock management is enabled and backorders are enabled, return unlimited quantity input
+    if ($this->should_manage_stock($product)) {
+        return sprintf(
             '<div class="quantity">
                 <label class="screen-reader-text" for="quantity_%1$s">Quantity</label>
                 <input type="button" value="-" class="qty_button minus">
-                <input type="number" id="quantity_%1$s" name="cart[%2$s][qty]" value="%3$s" min="1" max="%4$s" step="1" class="input-text qty text" size="4" pattern="[0-9]*" inputmode="numeric" aria-labelledby="quantity-label">
+                <input type="number" id="quantity_%1$s" name="cart[%2$s][qty]" value="%3$s" min="1" step="1" class="input-text qty text" size="4" pattern="[0-9]*" inputmode="numeric" aria-labelledby="quantity-label">
                 <input type="button" value="+" class="qty_button plus">
             </div>',
             esc_attr($cart_item_key), // Unique ID for the input
             esc_attr($cart_item_key), // Name attribute
-            esc_attr($cart_item['quantity']), // Current quantity
-            esc_attr($max_qty) // Max value
-        ); 
+            esc_attr($cart_item['quantity']) // Current quantity (no max limit)
+        );
+    }
 
-        return $product_quantity;
-    } 
+    // Continue with stock-managed products
+    $total_qty = 0;
+    $total_stock = $product->get_stock_quantity();
+    $held_stock = (int)get_post_meta($product_id, '_held_stock', true) ?: 0;
+    $total_qty = $total_stock - $held_stock;     
+
+    if (isset($cart_item['variation_id']) && $cart_item['variation_id'] !== 0 && isset($cart_item['variation'])) {
+        foreach ($cart_item['variation'] as $attribute_key => $attribute_value) { 
+            // Clean attribute key (remove "attribute_").
+            $taxonomy = str_replace('attribute_', '', $attribute_key);
+            // Get the term by its name in the corresponding taxonomy.
+            $term = get_term_by('name', $attribute_value, $taxonomy);
+            if ($term) {
+                // Get the custom term quantity meta.
+                $pack_size = get_term_meta($term->term_id, 'quantity', true) ?: 0;
+                $total_cart_qty = ($cart_item['quantity'] * $pack_size) + $total_qty; 
+                $max_qty = floor($total_cart_qty / $pack_size);  
+            }
+        }
+    } else {
+        $max_qty = $cart_item['quantity'] + $total_qty;
+    }
+
+    $product_quantity = sprintf(
+        '<div class="quantity">
+            <label class="screen-reader-text" for="quantity_%1$s">Quantity</label>
+            <input type="button" value="-" class="qty_button minus">
+            <input type="number" id="quantity_%1$s" name="cart[%2$s][qty]" value="%3$s" min="1" max="%4$s" step="1" class="input-text qty text" size="4" pattern="[0-9]*" inputmode="numeric" aria-labelledby="quantity-label">
+            <input type="button" value="+" class="qty_button plus">
+        </div>',
+        esc_attr($cart_item_key), // Unique ID for the input
+        esc_attr($cart_item_key), // Name attribute
+        esc_attr($cart_item['quantity']), // Current quantity
+        esc_attr($max_qty) // Max value
+    ); 
+
+    return $product_quantity;
+    }
     
     /* adjust stock on cart update */ 
     public function adjust_stock_on_cart_update($cart_item_key, $new_quantity, $old_quantity) 
@@ -473,6 +511,11 @@ class HandlerOutboundUpdateCart
         }
         $product_id = isset($cart_item['variation_id']) && $cart_item['variation_id'] ? $cart_item['variation_id'] : $cart_item['product_id'];
         $parent_id = $cart_item['product_id'];
+        $product = wc_get_product($parent_id);
+        if ($this->should_manage_stock($product)) {
+        return; // Skip stock management
+        }
+        
         // Calculate the quantity difference.
         $quantity_difference = $new_quantity - $old_quantity;
         $held_stock = get_post_meta($parent_id, '_held_stock', true);
@@ -485,7 +528,7 @@ class HandlerOutboundUpdateCart
             'post_status' => 'publish',
             'post_parent' => $parent_id, // Parent product ID
         );
-        $product = wc_get_product($parent_id);  
+         
         //validation update cart
         $attributes = $product->get_attributes();
         $variations = get_posts($args);
@@ -724,6 +767,10 @@ class HandlerOutboundUpdateCart
         if (!$cart_item) {
             return;
         }
+        $product = wc_get_product($product_id);
+        if ($this->should_manage_stock($product)) {
+        return; // Skip stock management
+        }
 
         // Check if stock has already been deducted for this cart item
         if (isset($cart_item['saved_cart_item'])) {
@@ -774,8 +821,13 @@ class HandlerOutboundUpdateCart
         if (!$cart_item) {
             wp_send_json_error(['error' => 'Cart item not found.']);
         }
+         
         // Check if the product manages stock
         $product = wc_get_product($product_id);
+        if ($this->should_manage_stock($product)) {
+        return; // Skip stock management
+        }
+        
         if ($product && $product->managing_stock()) {
             // Determine restore quantity
             $restore_quantity = 0;
@@ -834,4 +886,14 @@ class HandlerOutboundUpdateCart
             error_log("Stock not updated for Product ID {$product_id}: Product does not manage stock.");
         }
     }
+
+    private function should_manage_stock($product) {
+    if (!$product) return false;
+    
+    $manage_stock = $product->get_manage_stock();
+    $backorders_allowed = $product->get_backorders();  
+    $stock_status=$product->get_stock_status(); 
+    // Return true only if stock management is enabled AND backorders are allowed
+    return $manage_stock===false && ($backorders_allowed === 'notify' || $backorders_allowed === 'yes' || $stock_status=="onbackorder" || $stock_status=="instock");
+}
 }

@@ -195,7 +195,8 @@ class FlourishWebhook
         $item_sync_options = $this->existing_settings['item_sync_options'] ?? [];
 
         $flourish_items = new FlourishItems($items);
-        $flourish_items->save_as_woocommerce_products($item_sync_options);
+        $webhook_status = true;
+        $flourish_items->save_as_woocommerce_products($item_sync_options,$webhook_status);
 
         return new WP_REST_Response(['message' => 'Item handled successfully.'], 200);
     }
@@ -377,7 +378,10 @@ class FlourishWebhook
         foreach ($order_items as $item) {
             $flourish_item_id = $item['flourish_item_id'];
             $product_id = $item['parent_id'] ?? $item['product_id'];
-        
+            
+             
+ 
+
             if ($flourish_item_id && $product_id) {
                 // Fetch sellable quantity from Flourish API
                 // Retrieve settings
@@ -403,6 +407,11 @@ class FlourishWebhook
                             $reserved_with_sellable = 0; // or null if you want to ignore
                         }  
                         if ($wc_product) {
+                            
+                        if ($this->should_manage_stock($wc_product))
+                        {
+                        continue;
+                        }
                             // Update stock and clear cache
                             $wc_product->set_manage_stock(true);
 							wc_update_product_stock($wc_product, $reserved_with_sellable, 'set');
@@ -419,4 +428,13 @@ class FlourishWebhook
         }
         return true;
     }
+
+    private function should_manage_stock($product) {
+        if (!$product) return false;
+        $manage_stock = $product->get_manage_stock();
+        $backorders_allowed = $product->get_backorders();  
+        $stock_status=$product->get_stock_status(); 
+        // Return true only if stock management is enabled AND backorders are allowed
+        return $manage_stock===false && ($backorders_allowed === 'notify' || $backorders_allowed === 'yes' || $stock_status=="onbackorder" || $stock_status=="instock");
+    } 
 }
