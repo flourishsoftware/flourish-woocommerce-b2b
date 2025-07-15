@@ -38,7 +38,7 @@ class ServiceProvider
         (new FlourishOrderID())->register_hooks();
         (new FlourishWebhook($this->settings))->register_hooks();
         (new HandlerOrdersSyncNow($this->settings))->register_hooks();
-        (new ProductCustomfields())->register_hooks();
+        (new ProductCustomfields($this->settings))->register_hooks();
         (new HandlerOrdersCancel($this->settings))->register_hooks();
         
         // Conditional registration based on order type

@@ -203,7 +203,10 @@
 .woocommerce-order-received table.woocommerce-table.woocommerce-table--order-details .order-actions--heading, .woocommerce-order-received table.woocommerce-table.woocommerce-table--order-details .pay {
     display: none;
 }
-
+form.woocommerce-cart-form.wc-cart-discount-loading {
+    opacity: inherit !important;
+    pointer-events: visible !important;
+}
 /* CSS Button disabled state */
 .mc-btn-loading {
     opacity: 1 !important; /* Reduce opacity but keep text readable */

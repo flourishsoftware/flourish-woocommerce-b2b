@@ -169,7 +169,74 @@ jQuery(document).ready(function($) {
             allowClear: true, 
             width: '100%',
         }); 
-         
+         // Add this to your custom-checkout-license.js file
+
+ 
+    
+    // Handle destination change
+    $(document).on('change', '#destination', function() {
+        var destinationId = $(this).val();
+        var $salesRepField = $('#sales_rep_id');
+
+        // Skip AJAX if user has all destinations and all sales reps (already preloaded)
+        if (window.salesRepCheckoutData.allDestination === 'yes' && 
+            window.salesRepCheckoutData.allSalesRep === 'yes') {
+            console.log('Skipping AJAX - sales reps already preloaded');
+            return;
+        }
+        
+        
+        if (destinationId) {
+            // Show loading state
+            $salesRepField.prop('disabled', true);
+            $salesRepField.html('<option value="">Loading sales representatives...</option>');
+            
+            // Make AJAX call to get sales reps for this destination
+            $.ajax({
+                url: licenseData.ajax_url,
+                type: 'POST',
+                data: {
+                    action: 'get_sales_reps_by_destination',
+                    destination_id: destinationId,
+                    nonce: licenseData.nonce
+                },
+                success: function(response) {
+                    if (response.success && response.data.sales_reps) {
+                        // Clear the dropdown
+                        $salesRepField.empty();
+                        
+                        // Add default option
+                        $salesRepField.append('<option value="">Select a sales representative...</option>');
+                        
+                        // Add sales rep options
+                        $.each(response.data.sales_reps, function(repId, repName) {
+                            $salesRepField.append('<option value="' + repId + '">' + repName + '</option>');
+                        });
+                        
+                        // Enable the field
+                        $salesRepField.prop('disabled', false);
+                        
+                        // Update description
+                        $salesRepField.closest('.form-row').find('small').text('Select your assigned sales representative for this destination.');
+                        
+                    } else {
+                        // No sales reps found
+                        $salesRepField.html('<option value="">No sales representatives available</option>');
+                        $salesRepField.prop('disabled', true);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Error loading sales reps:', error);
+                    $salesRepField.html('<option value="">Error loading sales representatives</option>');
+                    $salesRepField.prop('disabled', true);
+                }
+            });
+        } else {
+            // No destination selected, reset sales rep field
+            $salesRepField.html('<option value="">Select destination first</option>');
+            $salesRepField.prop('disabled', true);
+        }
+    });
         // Add validation to checkout process 
         $('form.checkout').on('checkout_place_order', function() { 
             if ($('#destination').val() === '') { 

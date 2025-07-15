@@ -21,7 +21,7 @@ class HandlerOrdersSyncNow
     public function register_hooks()
     {
         add_action('woocommerce_order_actions', [$this, 'add_sync_now_action']);
-        add_action('woocommerce_order_action_sync_order_now', [$this, 'sync_order_now']);
+		add_action('woocommerce_order_action_sync_order_now', [$this, 'sync_order_now']);
         // Hook into the action when an order is moved to the trash from the order edit page
         add_action('wp_trash_post', [$this, 'custom_action_on_trash_order_from_edit_page'], 10, 1);
         // Hook into the WooCommerce order save action
@@ -50,7 +50,10 @@ class HandlerOrdersSyncNow
         }
         add_action('woocommerce_process_shop_order_meta', [$this, 'handle_order_cancel_update'], 10, 3);    
         add_filter('handle_bulk_actions-edit-shop_order', [$this, 'handle_custom_bulk_status_action'], 10, 3);
+        
     }
+      
+
     
     /**
      * Adds a custom "Sync Now" action to the available actions list.
@@ -121,6 +124,7 @@ class HandlerOrdersSyncNow
 
                 // Check for an existing destination in Flourish
                 $flourish_api = $this->initializeFlourishAPI();
+                $facility_id = $flourish_api->facility_id;
 
                 // Create outbound order in Flourish.
                 $order_data = $flourish_api->get_order_by_id($flourish_order_id, "outbound-orders");
@@ -132,15 +136,9 @@ class HandlerOrdersSyncNow
                     // Build destination and billing address.
                     $billing_address = HandlerOrdersOutbound::create_address_object($wc_order, 'billing');
                     $destination = HandlerOrdersOutbound::create_destination_object($wc_order, $billing_address);
-
-                    // Check for an existing destination in Flourish.
-                   // $existing_destination = $flourish_api->fetch_destination_by_license($destination['license_number']);
-                   // if ($existing_destination) {
-                        //$destination['id'] = $existing_destination['id'];
-                   // }
-                    // Loop through order items and sync them with Flourish
+                   // Loop through order items and sync them with Flourish
                     $order_lines = HandlerOrdersOutbound::get_order_lines($wc_order,"update");
-
+                     
                     $order = [
                         'original_order_id' => (string) $wc_order->get_id(),
                         'order_lines' => $order_lines,
@@ -151,6 +149,21 @@ class HandlerOrdersSyncNow
                     if ($order_status_value === 'shipped') {
                         $order['order_status'] = "Shipped";
                     }
+                     $order_sales_rep_id = get_post_meta($wc_order->get_id(), '_sales_rep_id', true );
+
+                    if(!empty($order_sales_rep_id))
+                    {
+                     $sale_rep_id = $order_sales_rep_id;
+                    }
+                    else 
+                    {
+                    $sale_rep_id = "";
+                    } 
+					$default_sales_rep_id = $this->existing_settings['sales_rep_id'];
+                      
+                     // Validate facility configuration.
+                     HandlerOrdersOutbound::validate_facility_config($flourish_api, $facility_id, $sale_rep_id, $order,$default_sales_rep_id );
+
                     // Update outbound order in Flourish.
                     $flourish_order = $flourish_api->update_outbound_order($order, $flourish_order_id);
                     $order_items = $this->get_flourish_item_ids_from_order($order_id);
@@ -233,6 +246,11 @@ class HandlerOrdersSyncNow
         foreach ($order_items as $item) {
             $flourish_item_id = $item['flourish_item_id'];
             $product_id = $item['parent_id'] ?? $item['product_id'];
+             $wc_product = wc_get_product($product_id);
+                if ($this->should_manage_stock($wc_product))
+                {
+                continue;
+                } 
 
             if ($flourish_item_id && $product_id) {
                 // Fetch sellable quantity from Flourish API
@@ -242,8 +260,7 @@ class HandlerOrdersSyncNow
 
                 foreach ($inventory_data as $items) {
                     if (!empty($items['sellable_qty'])) {
-                        $sellable_quantity = $items['sellable_qty'];
-                        $wc_product = wc_get_product($product_id);
+                        $sellable_quantity = $items['sellable_qty']; 
                         $reserved_stock = (int) get_post_meta($product_id, '_reserved_stock', true);
                         if ($sellable_quantity >= 0) {
                             $reserved_with_sellable = $sellable_quantity - $reserved_stock;
@@ -251,7 +268,8 @@ class HandlerOrdersSyncNow
                             // Skip calculation or set a default value
                             $reserved_with_sellable = 0; // or null if you want to ignore
                         }  
-                        if ($wc_product) {
+                        if ($wc_product) { 
+                        
                             // Update stock and clear cache
                             $wc_product->set_manage_stock(true);
                             wc_update_product_stock($wc_product, $reserved_with_sellable, 'set');
@@ -512,8 +530,17 @@ class HandlerOrdersSyncNow
                 //when order is cancelled reversed stock will decrease
                 $reversed_stock_increase = abs($reserved_stock - $add_qty);
                 update_post_meta($product_id, '_reserved_stock', $reversed_stock_increase); 
-
             }
+            // FIXED: Replace $this->should_manage_stock() with static method call
+        if (self::should_manage_stock($parent_product))
+        {
+           continue;
+        }
+            // Skip if product doesn't exist (deleted product)
+            if (!$product || !$parent_product) {
+            error_log("Product not found for order item. Product ID: $product_id, Variation ID: $variation_id");
+            continue;
+            } 
             $parent_product->set_stock_quantity($new_stock);
             $parent_product->save();
         }
@@ -562,10 +589,21 @@ class HandlerOrdersSyncNow
                 'notes' => $notes,
             ];
 
-            $sale_rep_id = $this->existing_settings['sales_rep_id'];
+                $order_sales_rep_id = get_post_meta( $wc_order->get_id(), '_sales_rep_id', true );
 
-            // Validate facility configuration.
-            HandlerOrdersOutbound::validate_facility_config($flourish_api, $facility_id, $sale_rep_id, $order);
+                if(!empty($order_sales_rep_id))
+                {
+                $sale_rep_id = $order_sales_rep_id;
+                }
+                else 
+                {
+                $sale_rep_id = "";
+                }
+                  $default_sales_rep_id = $this->existing_settings['sales_rep_id'];
+                      
+                     // Validate facility configuration.
+                     HandlerOrdersOutbound::validate_facility_config($flourish_api, $facility_id, $sale_rep_id, $order,$default_sales_rep_id );    
+ 
 
             // Create outbound order in Flourish.
             $flourish_order_id = $flourish_api->create_outbound_order($order);
@@ -660,39 +698,14 @@ class HandlerOrdersSyncNow
         }
     }
 
-    /**
-     * AJAX handler for stock availability with case size quantity
-     */
-    public function check_stock_availability()
-    {
-        $attribute_key = isset($_POST['attribute_key']) ? $_POST['attribute_key'] : '';
-        $attribute_value = isset($_POST['attribute_value']) ? $_POST['attribute_value'] : null;
-        $quantity = isset($_POST['quantity']) ? absint($_POST['quantity']) : 1;
-        $maxStock = isset($_POST['maxStock']) ? absint($_POST['maxStock']) : 1;
-        // Get the term by its name in the corresponding taxonomy
-        $term = get_term_by('slug', $attribute_value, $attribute_key);
-        if ($term) {
-            $term_quantity = (int) get_term_meta($term->term_id, 'quantity', true);
-            $cart_quantity = $quantity * $term_quantity;
-            if ($cart_quantity > $maxStock) {
-                wp_send_json_error([
-                    'error_message' => sprintf(
-                        'Requested quantity exceeds stock. You can only purchase up to %d of "%s".',
-                        floor($maxStock / $term_quantity), // Max allowed quantity
-                        $attribute_value
-                    )
-                ]);
-            }
-        }
-        
 
-        // Success: Stock is sufficient
-        wp_send_json_success([
-            'message' => 'Stock is sufficient.',
-            'requested_quantity' => $quantity,
-            'max_stock' => $maxStock
-        ]);
-    }
-
-   
+   private static function should_manage_stock($product) {
+    if (!$product) return false;
+    
+    $manage_stock = $product->get_manage_stock();
+    $backorders_allowed = $product->get_backorders();  
+    $stock_status=$product->get_stock_status(); 
+    // Return true only if stock management is enabled AND backorders are allowed
+    return $manage_stock===false && ($backorders_allowed === 'notify' || $backorders_allowed === 'yes' || $stock_status=="onbackorder" || $stock_status=="instock");
+}
 }
