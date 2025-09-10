@@ -77,52 +77,56 @@ class HandlerOrdersSyncNow
      * @param WC_Order $order The WooCommerce order object to be synchronized.
      * @return void
      */
-    public function sync_order_now($order)
-    {
-        $order_id = $order->get_id();
+  public function sync_order_now($order)
+{
+    $order_id = $order->get_id();
 
-        if ($order->get_meta('flourish_order_id')) {
-            // We've already created this order in Flourish, so we don't need to do anything.
-            return;
-        }
+    if ($order->get_meta('flourish_order_id')) {
+        // We've already created this order in Flourish, so we don't need to do anything.
+        return;
+    }
 
-        if (!$this->existing_settings) {
-            // We don't have any Flourish settings
-            return;
-        }
+    if (!$this->existing_settings) {
+        // We don't have any Flourish settings
+        return;
+    }
 
-        $order_type = isset($this->existing_settings['flourish_order_type']) ? $this->existing_settings['flourish_order_type'] : false;
-        if (!$order_type) {
-            // We don't have an order type set
-            return;
-        }
+    $order_type = isset($this->existing_settings['flourish_order_type']) ? $this->existing_settings['flourish_order_type'] : false;
+    if (!$order_type) {
+        // We don't have an order type set
+        return;
+    }
 
+    try {
         if ($order_type === 'retail') {
             $handler_orders_retail = new HandlerOrdersRetail($this->existing_settings);
             $handler_orders_retail->handle_order_retail($order_id);
         } else {
-            $handler_orders_outbound = new HandlerOrdersOutbound($this->existing_settings);
-            $handler_orders_outbound->handle_order_outbound($order_id);
+            $this->handle_order_outbound($order_id);
         }
-
-        return;
+    } catch (Exception $e) {
+        error_log('Error syncing order ' . $order_id . ': ' . $e->getMessage());
+        // Add order note about the failure
+        $order->add_order_note('Failed to sync with Flourish: ' . $e->getMessage());
+        $order->save();
     }
+
+    return;
+}
 
     /**
      * syncing products with Flourish when order status is processing.
      */
-    public function sync_products_with_flourish($order_id, $order_status_value)
-    {
+   public function sync_products_with_flourish($order_id, $order_status_value)
+{
+    if ($order_id) {
+        $wc_order = wc_get_order($order_id);
 
-        if ($order_id) {
+        if ($wc_order) {
+            $flourish_order_id = $wc_order->get_meta('flourish_order_id');
 
-            $wc_order = wc_get_order($order_id);
-
-            if ($wc_order) {
-
-                $flourish_order_id = $wc_order->get_meta('flourish_order_id');
-
-                // Check for an existing destination in Flourish
+            try {
+                // Check for an existing destination in Flourish - UPDATED: Use new API
                 $flourish_api = $this->initializeFlourishAPI();
                 $facility_id = $flourish_api->facility_id;
 
@@ -132,12 +136,11 @@ class HandlerOrdersSyncNow
                 $order_status = isset($order_data['order_status']) ? $order_data['order_status'] : null;
 
                 if ($order_status === 'Created') {
-
                     // Build destination and billing address.
                     $billing_address = HandlerOrdersOutbound::create_address_object($wc_order, 'billing');
                     $destination = HandlerOrdersOutbound::create_destination_object($wc_order, $billing_address);
-                   // Loop through order items and sync them with Flourish
-                    $order_lines = HandlerOrdersOutbound::get_order_lines($wc_order,"update");
+                    // Loop through order items and sync them with Flourish
+                    $order_lines = HandlerOrdersOutbound::get_order_lines($wc_order, "update");
                      
                     $order = [
                         'original_order_id' => (string) $wc_order->get_id(),
@@ -145,46 +148,48 @@ class HandlerOrdersSyncNow
                         'destination' => $destination,
                         'order_timestamp' => gmdate("Y-m-d\TH:i:s.v\Z"),
                     ];
+                    
                     // Add `order_status` only if `$order_status_value` is "completed"
                     if ($order_status_value === 'shipped') {
                         $order['order_status'] = "Shipped";
                     }
-                     $order_sales_rep_id = get_post_meta($wc_order->get_id(), '_sales_rep_id', true );
+                    
+                    $order_sales_rep_id = get_post_meta($wc_order->get_id(), '_sales_rep_id', true);
 
-                    if(!empty($order_sales_rep_id))
-                    {
-                     $sale_rep_id = $order_sales_rep_id;
-                    }
-                    else 
-                    {
-                    $sale_rep_id = "";
+                    if (!empty($order_sales_rep_id)) {
+                        $sale_rep_id = $order_sales_rep_id;
+                    } else {
+                        $sale_rep_id = "";
                     } 
-					$default_sales_rep_id = $this->existing_settings['sales_rep_id'];
-                      
-                     // Validate facility configuration.
-                     HandlerOrdersOutbound::validate_facility_config($flourish_api, $facility_id, $sale_rep_id, $order,$default_sales_rep_id );
+                    
+                    $default_sales_rep_id = $this->existing_settings['sales_rep_id'];
+                          
+                    // Validate facility configuration.
+                    HandlerOrdersOutbound::validate_facility_config($flourish_api, $facility_id, $sale_rep_id, $order, $default_sales_rep_id);
 
                     // Update outbound order in Flourish.
                     $flourish_order = $flourish_api->update_outbound_order($order, $flourish_order_id);
                     $order_items = $this->get_flourish_item_ids_from_order($order_id);
                     $this->order_stock_update($order_items);
-                    //wp_send_json_success(['message' => 'Products synced with Flourish successfully']);
+                    
                     $wc_order->add_order_note("Products updated with Flourish successfully");
                     $wc_order->save();
                 } else {
                     $logger = wc_get_logger();
                     $context = ['source' => 'flourish-sync'];
                     $logger->error("Order ID $order_id sync failed. Order status: " . ($order_status ?? 'Unknown'), $context);
-                    //wp_send_json_error(['message' => 'Order cannot be synced. Status: ' . ($order_status ?? 'Unknown')]);
-                    $wc_order->add_order_note("Order cannot be synced. Status: .$order_status ");
+                    
+                    $wc_order->add_order_note("Order cannot be synced. Status: " . $order_status);
                     $wc_order->save();
                 }
+            } catch (Exception $e) {
+                error_log('Error syncing products with Flourish for order ' . $order_id . ': ' . $e->getMessage());
+                $wc_order->add_order_note("Error syncing with Flourish: " . $e->getMessage());
+                $wc_order->save();
             }
         }
-
-        //wp_die();
     }
-
+}
     public function custom_action_on_trash_order_from_edit_page($post_id)
     {
         $order_type = isset($this->existing_settings['flourish_order_type']) ? $this->existing_settings['flourish_order_type'] : false;
@@ -241,20 +246,20 @@ class HandlerOrdersSyncNow
         return $flourish_items;
     }
 
-    public function order_stock_update($order_items)
-    {
-        foreach ($order_items as $item) {
-            $flourish_item_id = $item['flourish_item_id'];
-            $product_id = $item['parent_id'] ?? $item['product_id'];
-             $wc_product = wc_get_product($product_id);
-                if ($this->should_manage_stock($wc_product))
-                {
-                continue;
-                } 
+ public function order_stock_update($order_items)
+{
+    foreach ($order_items as $item) {
+        $flourish_item_id = $item['flourish_item_id'];
+        $product_id = $item['parent_id'] ?? $item['product_id'];
+        $wc_product = wc_get_product($product_id);
+        
+        if ($this->should_manage_stock($wc_product)) {
+            continue;
+        } 
 
-            if ($flourish_item_id && $product_id) {
-                // Fetch sellable quantity from Flourish API
-                // Check for an existing destination in Flourish
+        if ($flourish_item_id && $product_id) {
+            try {
+                // Fetch sellable quantity from Flourish API - UPDATED: Use new API
                 $flourish_api = $this->initializeFlourishAPI();
                 $inventory_data = $flourish_api->fetch_inventory($flourish_item_id);
 
@@ -262,28 +267,32 @@ class HandlerOrdersSyncNow
                     if (!empty($items['sellable_qty'])) {
                         $sellable_quantity = $items['sellable_qty']; 
                         $reserved_stock = (int) get_post_meta($product_id, '_reserved_stock', true);
+                        
                         if ($sellable_quantity >= 0) {
                             $reserved_with_sellable = $sellable_quantity - $reserved_stock;
                         } else {
                             // Skip calculation or set a default value
                             $reserved_with_sellable = 0; // or null if you want to ignore
                         }  
-                        if ($wc_product) { 
                         
+                        if ($wc_product) { 
                             // Update stock and clear cache
                             $wc_product->set_manage_stock(true);
                             wc_update_product_stock($wc_product, $reserved_with_sellable, 'set');
                             wc_delete_product_transients($product_id);
                             wc_delete_shop_order_transients();
                             $wc_product->save();
-                            //error_log("Updated stock for product ID: $product_id | Stock: $sellable_quantity");
                         }
                     }
                 }
+            } catch (Exception $e) {
+                error_log('Error updating stock for product ' . $product_id . ': ' . $e->getMessage());
+                continue; // Continue with next item even if this one fails
             }
         }
-        return true;
     }
+    return true;
+}
     public function handle_custom_bulk_status_action($redirect_to, $action, $post_ids) {
        
         error_log('Bulk sync triggered for orders: ' . print_r($post_ids, true));
@@ -296,84 +305,77 @@ class HandlerOrdersSyncNow
     }
 
    
-    public function handle_order_cancel_update_bulk($post_id,$status)
-    {
-        // Ensure this is a WooCommerce order
-        if ('shop_order' !== get_post_type($post_id)) {
-            //return;
-        }
+    public function handle_order_cancel_update_bulk($post_id, $status)
+{
+    // Ensure this is a WooCommerce order
+    if ('shop_order' !== get_post_type($post_id)) {
+        return;
+    }
 
-        // Get the updated order
-        $wc_order = wc_get_order($post_id);
+    // Get the updated order
+    $wc_order = wc_get_order($post_id);
 
-        if (!$wc_order) {
-            error_log('Order not found for post ID ' . $post_id);
-            return;
-        }
+    if (!$wc_order) {
+        error_log('Order not found for post ID ' . $post_id);
+        return;
+    }
 
-        // Check if the order status is being updated to "Cancelled"
-        $selected_status = $status;
+    // Check if the order status is being updated to "Cancelled"
+    $selected_status = $status;
 
-        // Retrieve any additional data or settings needed
-        $order_type = isset($this->existing_settings['flourish_order_type']) ? $this->existing_settings['flourish_order_type'] : false;
+    // Retrieve any additional data or settings needed
+    $order_type = isset($this->existing_settings['flourish_order_type']) ? $this->existing_settings['flourish_order_type'] : false;
 
-        if ($order_type !== 'retail') {
-            $flourish_order_id = $wc_order->get_meta('flourish_order_id');
+    if ($order_type !== 'retail') {
+        $flourish_order_id = $wc_order->get_meta('flourish_order_id');
 
-            if (!empty($flourish_order_id)) {
+        if (!empty($flourish_order_id)) {
+            try {
                 $flourish_api = $this->initializeFlourishAPI();
                 $order_data = $flourish_api->get_order_by_id($flourish_order_id, "outbound-orders");
 
                 $order_status = isset($order_data['order_status']) ? $order_data['order_status'] : null;
                 if ($order_status === "Allocated") {
                     // Your desired logic here
-                    // For example: Disable items or update order meta
                     $wc_order->add_order_note("The order is allocated in Flourish.");
                     $wc_order->save();
                 }
+            } catch (Exception $e) {
+                error_log('Error checking order status in Flourish: ' . $e->getMessage());
             }
-            if ($selected_status === 'mark_cancelled') {
+        }
+        
+        if ($selected_status === 'mark_cancelled') {
+            $flourish_order_id = $wc_order->get_meta('flourish_order_id');
 
-                $flourish_order_id = $wc_order->get_meta('flourish_order_id');
+            if (empty($flourish_order_id)) {
+                $order = wc_get_order($post_id);
 
-                if (empty($flourish_order_id)) {
-                    // Create outbound order in Flourish.
-                    if ($selected_status === 'mark_cancelled') {
-                        $order = wc_get_order($post_id);
-                        //if ($order instanceof WC_Order) {
-
-                        // Check if stock has already been adjusted
-                        if (!$order->get_meta('_stock_adjusted')) {
-                            $this->adjust_variation_stock($order, 'increase');
-                            // Mark stock as adjusted
-                            $order->update_meta_data('_stock_adjusted', true);
-                            $order->save();
-                        } else {
-                            error_log("Stock already adjusted cancelled: {$post_id}");
-                        }
-                        
-                    }
+                // Check if stock has already been adjusted
+                if (!$order->get_meta('_stock_adjusted')) {
+                    $this->adjust_variation_stock($order, 'increase');
+                    // Mark stock as adjusted
+                    $order->update_meta_data('_stock_adjusted', true);
+                    $order->save();
+                } else {
+                    error_log("Stock already adjusted cancelled: {$post_id}");
                 }
-                else
-                {
-                    // Check if the post being trashed is a WooCommerce order
-                    if ('shop_order' !== get_post_type($post_id)) {
-                        //return;
-                    }
-                    // Retrieve the WooCommerce order
-                    $wc_order = wc_get_order($post_id);
-                    $this->sync_cancel_update($wc_order, $post_id);
-                }
+            } else {
+                // Retrieve the WooCommerce order
+                $wc_order = wc_get_order($post_id);
+                $this->sync_cancel_update($wc_order, $post_id);
             }
-            if ($selected_status === 'mark_processing') {
-                $sync_outboundorder = $this->handle_order_outbound($post_id);
-            }
-            if ($selected_status === 'mark_completed') {
-                $sync_outboundorder =  $this->sync_products_with_flourish($post_id, "shipped");
-            }
-            
+        }
+        
+        if ($selected_status === 'mark_processing') {
+            $sync_outboundorder = $this->handle_order_outbound($post_id);
+        }
+        
+        if ($selected_status === 'mark_completed') {
+            $sync_outboundorder = $this->sync_products_with_flourish($post_id, "shipped");
         }
     }
+}
     public function handle_order_cancel_update($post_id)
     {
         // Ensure this is a WooCommerce order
@@ -545,116 +547,110 @@ class HandlerOrdersSyncNow
             $parent_product->save();
         }
     }
-    public function handle_order_outbound($order_id)
-    {
+   public function handle_order_outbound($order_id)
+{
+    try {
+        $wc_order = wc_get_order($order_id);
 
-        try {
-            $wc_order = wc_get_order($order_id);
+        if ($wc_order->get_meta('flourish_order_id')) {
+            $this->sync_products_with_flourish($order_id, "Updated");
+            // Order already exists in Flourish, skip processing.
+            return;
+        }
+        
+        // Check for an existing destination in Flourish - UPDATED: Use new API
+        $flourish_api = $this->initializeFlourishAPI();
+        $facility_id = $flourish_api->facility_id;
 
-            if ($wc_order->get_meta('flourish_order_id')) {
-                $this->sync_products_with_flourish($order_id, "Updated");
-                // Order already exists in Flourish, skip processing.
-                return;
-            }
-            // Check for an existing destination in Flourish
-            $flourish_api = $this->initializeFlourishAPI();
+        // Build destination and billing address.
+        $billing_address = HandlerOrdersOutbound::create_address_object($wc_order, 'billing');
+        $destination = HandlerOrdersOutbound::create_destination_object($wc_order, $billing_address);
 
-            $facility_id = $flourish_api->facility_id;
+        // Generate order lines.
+        $order_lines = HandlerOrdersOutbound::get_order_lines($wc_order, "create");
+        if (empty($order_lines)) {
+            throw new \Exception("No order lines found for order " . $wc_order->get_id());
+        }
 
-            // Build destination and billing address.
-            $billing_address = HandlerOrdersOutbound::create_address_object($wc_order, 'billing');
-            $destination = HandlerOrdersOutbound::create_destination_object($wc_order, $billing_address);
+        // Collect customer notes.
+        $notes = HandlerOrdersOutbound::get_customer_notes($wc_order);
 
-            // Check for an existing destination in Flourish.
-           // $existing_destination = $flourish_api->fetch_destination_by_license($destination['license_number']);
-           // if ($existing_destination) {
-                //$destination['id'] = $existing_destination['id'];
-            //}
+        // Build the order payload.
+        $order = [
+            'original_order_id' => (string) $wc_order->get_id(),
+            'order_lines' => $order_lines,
+            'destination' => $destination,
+            'order_timestamp' => gmdate("Y-m-d\TH:i:s.v\Z"),
+            'notes' => $notes,
+        ];
 
-            // Generate order lines.
-            $order_lines = HandlerOrdersOutbound::get_order_lines($wc_order,"create");
-            if (empty($order_lines)) {
-                throw new \Exception("No order lines found for order " . $wc_order->get_id());
-            }
+        $order_sales_rep_id = get_post_meta($wc_order->get_id(), '_sales_rep_id', true);
 
-            // Collect customer notes.
-            $notes = HandlerOrdersOutbound::get_customer_notes($wc_order);
+        if (!empty($order_sales_rep_id)) {
+            $sale_rep_id = $order_sales_rep_id;
+        } else {
+            $sale_rep_id = "";
+        }
+        
+        $default_sales_rep_id = $this->existing_settings['sales_rep_id'];
+                  
+        // Validate facility configuration.
+        HandlerOrdersOutbound::validate_facility_config($flourish_api, $facility_id, $sale_rep_id, $order, $default_sales_rep_id);    
 
-            // Build the order payload.
-            $order = [
-                'original_order_id' => (string) $wc_order->get_id(),
-                'order_lines' => $order_lines,
-                'destination' => $destination,
-                'order_timestamp' => gmdate("Y-m-d\TH:i:s.v\Z"),
-                'notes' => $notes,
-            ];
+        // Create outbound order in Flourish.
+        $flourish_order_id = $flourish_api->create_outbound_order($order);
 
-                $order_sales_rep_id = get_post_meta( $wc_order->get_id(), '_sales_rep_id', true );
+        $order_items = HandlerOrdersSyncNow::get_flourish_item_ids_from_order($order_id);
 
-                if(!empty($order_sales_rep_id))
-                {
-                $sale_rep_id = $order_sales_rep_id;
-                }
-                else 
-                {
-                $sale_rep_id = "";
-                }
-                  $default_sales_rep_id = $this->existing_settings['sales_rep_id'];
-                      
-                     // Validate facility configuration.
-                     HandlerOrdersOutbound::validate_facility_config($flourish_api, $facility_id, $sale_rep_id, $order,$default_sales_rep_id );    
- 
+        // Update WooCommerce order metadata.
+        $this->order_stock_update($order_items);
+        $wc_order->update_meta_data('flourish_order_id', $flourish_order_id);
+        $wc_order->add_order_note("Products synced with Flourish successfully");
+        $wc_order->save();
 
-            // Create outbound order in Flourish.
-            $flourish_order_id = $flourish_api->create_outbound_order($order);
+        do_action('flourish_order_outbound_created', $wc_order, $flourish_order_id);
+    } catch (\Exception $e) {
+        // Log errors.
+        wc_get_logger()->error(
+            "Error creating outbound order: " . $e->getMessage(),
+            ['source' => 'flourish-woocommerce-plugin']
+        );
 
-            $order_items = HandlerOrdersSyncNow::get_flourish_item_ids_from_order($order_id);
-
-            // Update WooCommerce order metadata.
-            $this->order_stock_update($order_items);
-            $wc_order->update_meta_data('flourish_order_id', $flourish_order_id);
-            $wc_order->add_order_note("Products synced with Flourish successfully");
-            $wc_order->save();
-
-            do_action('flourish_order_outbound_created', $wc_order, $flourish_order_id);
-        } catch (\Exception $e) {
-            // Log errors.
-            wc_get_logger()->error(
-                "Error creating outbound order: " . $e->getMessage(),
-                ['source' => 'flourish-woocommerce-plugin']
-            );
-
-            //send mail 
+        // Send mail 
+        if (class_exists('FlourishWooCommercePlugin\Helpers\HttpRequestHelper')) {
             $email_send = HttpRequestHelper::send_order_failure_email_to_admin($e->getMessage(), $order_id);
         }
     }
+}
     protected function initializeFlourishAPI()
     {
-        $settingsHandler = new SettingsHandler($this->existing_settings); // Assuming $this->existing_settings is passed correctly
-        $api_key = $settingsHandler->getSetting('api_key');
-        $username = $settingsHandler->getSetting('username');
-        $url = $settingsHandler->getSetting('url');
-        $facility_id = $settingsHandler->getSetting('facility_id');
+    $settingsHandler = new SettingsHandler($this->existing_settings);
+    $api_key = $settingsHandler->getSetting('api_key');
+    // Remove username line - no longer needed
+    $url = $settingsHandler->getSetting('url');
+    $facility_id = $settingsHandler->getSetting('facility_id');
 
-        // Return a new FlourishAPI instance
-        return new FlourishAPI($username, $api_key, $url, $facility_id);
+    // Return a new FlourishAPI instance - UPDATED: New constructor without username
+    return new FlourishAPI($api_key, $url, $facility_id);
     }
     public function sync_cancel_update($wc_order, $post_id)
     {
-        if (!$wc_order) {
-            error_log('Order not found or invalid for post ID ' . $post_id);
-            return;
-        }
+    if (!$wc_order) {
+        error_log('Order not found or invalid for post ID ' . $post_id);
+        return;
+    }
 
-        // Retrieve the Flourish Order ID from order meta
-        $flourish_order_id = $wc_order->get_meta('flourish_order_id');
+    // Retrieve the Flourish Order ID from order meta
+    $flourish_order_id = $wc_order->get_meta('flourish_order_id');
 
-        if (empty($flourish_order_id)) {
-            $this->adjust_variation_stock($wc_order, 'increase');
-            error_log('Flourish Order ID not found for WooCommerce Order ID ' . $wc_order->get_id());
-            return;
-        }
-        // Check for an existing destination in Flourish
+    if (empty($flourish_order_id)) {
+        $this->adjust_variation_stock($wc_order, 'increase');
+        error_log('Flourish Order ID not found for WooCommerce Order ID ' . $wc_order->get_id());
+        return;
+    }
+    
+    try {
+        // Check for an existing destination in Flourish - UPDATED: Use new API
         $flourish_api = $this->initializeFlourishAPI();
 
         // Fetch the Flourish order data
@@ -669,18 +665,13 @@ class HandlerOrdersSyncNow
             $billing_address = HandlerOrdersOutbound::create_address_object($wc_order, 'billing');
             $destination = HandlerOrdersOutbound::create_destination_object($wc_order, $billing_address);
 
-            // Check for an existing destination in Flourish.
-           // $existing_destination = $flourish_api->fetch_destination_by_license($destination['license_number']);
-            //if ($existing_destination) {
-               //$destination['id'] = $existing_destination['id'];
-            //}
-
             $order = [
                 'original_order_id' => (string) $wc_order->get_id(),
                 'destination' => $destination,
                 'order_timestamp' => gmdate("Y-m-d\TH:i:s.v\Z"),
                 'order_status' => "Cancelled",
             ];
+            
             $order_type = isset($this->existing_settings['flourish_order_type']) ? $this->existing_settings['flourish_order_type'] : false;
             if ($order_type !== 'retail') {
                 // Update outbound order in Flourish.
@@ -696,8 +687,10 @@ class HandlerOrdersSyncNow
             // Cancel the trashing of the order if the status does not match
             error_log('Order not trashed due to Flourish Order Status: ' . $order_status);
         }
+    } catch (Exception $e) {
+        error_log('Error cancelling order in Flourish: ' . $e->getMessage());
     }
-
+}
 
    private static function should_manage_stock($product) {
     if (!$product) return false;

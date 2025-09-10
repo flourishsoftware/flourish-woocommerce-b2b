@@ -12,30 +12,59 @@ class FlourishAPI
 {
     const API_LIMIT = 50;
 
-    public $username;
     public $api_key;
     public $url;
     public $facility_id;
     public $auth_header;
 
-    public function __construct($username, $api_key, $url, $facility_id)
+    /**
+     * Constructor - Updated for new API key authentication
+     * 
+     * @param string $api_key The service-based API key from Flourish
+     * @param string $url The API base URL
+     * @param string $facility_id The facility ID
+     */
+    public function __construct($api_key, $url, $facility_id)
     {
-        $this->username = $username;
         $this->api_key = $api_key;
         $this->url = $url;
         $this->facility_id = $facility_id;
-        $this->auth_header = base64_encode($username . ':' . $api_key);
+        // FIXED: Use x-api-key header instead of Bearer token
+        $this->auth_header = $api_key;
     }
+
+    /**
+     * Get headers for API requests
+     * 
+     * @param bool $include_facility_id Whether to include FacilityID header
+     * @param bool $include_content_type Whether to include Content-Type header
+     * @return array Headers array
+     */
+    private function get_headers($include_facility_id = false, $include_content_type = false)
+    {
+        // FIXED: Use x-api-key header instead of Authorization: Bearer
+        $headers = [
+            'x-api-key: ' . $this->auth_header
+        ];
+
+        if ($include_facility_id && $this->facility_id) {
+            $headers[] = 'FacilityID: ' . $this->facility_id;
+        }
+
+        if ($include_content_type) {
+            $headers[] = 'Content-Type: application/json';
+        }
+
+        return $headers;
+    }
+
     /**
      * Fetch inventory
      */
     public function fetch_product_by_id($item_id)
     {
         $api_url = $this->url . "/external/api/v1/items?item_id=$item_id";
-
-        $headers = [
-            'Authorization: Basic ' . $this->auth_header
-        ];
+        $headers = $this->get_headers();
 
         // Use the HttpRequestHelper for the API call
         try
@@ -57,6 +86,7 @@ class FlourishAPI
         error_log("Batch imported count: " . $imported_count);
     
     }
+
     /**
      * Fetches products based on optional brand filtering.
      *
@@ -67,7 +97,6 @@ class FlourishAPI
      * @param array  $brands        An array of brand names or IDs to filter by. Defaults to an empty array.
      * @return array An array of fetched products based on the given filters.
      */
-
      public function fetch_products($filter_brands = false, $brands = []) {
         $offset = 0;
         $limit = self::API_LIMIT;
@@ -82,7 +111,7 @@ class FlourishAPI
                 $api_url .= "&" . implode("&", array_map(fn($brand) => "brand_name={$brand}", $brand_query));
             }
     
-            $headers = ['Authorization: Basic ' . $this->auth_header];
+            $headers = $this->get_headers();
     
             try {
                 $response_http = HttpRequestHelper::make_request($api_url, 'GET', $headers);
@@ -140,24 +169,17 @@ class FlourishAPI
         
         foreach ($chunks as $batch) {
             $api_url = $this->url . "/external/api/v1/inventory/summary";
-            $headers = [
-                'Authorization: Basic ' . $this->auth_header,
-                'FacilityID: ' . $this->facility_id,
-            ];
-            //$payload = json_encode(['item_id' => $batch]);
+            $headers = $this->get_headers(true); // Include FacilityID header
+            
             $query_params = implode('&', array_map(fn($id) => "item_id={$id}", $batch));
             $api_url = $this->url . "/external/api/v1/inventory/summary?" . $query_params;
     
-    
-   
-                try {
-                    $response_http = HttpRequestHelper::make_request($api_url, 'GET', $headers);
-                    $response_data = HttpRequestHelper::validate_response($response_http);
-                    //break; // Exit loop on success
-                } catch (\Exception $e) {   
-                    error_log("Error fetching inventory" . $e->getMessage());
-                }
-            
+            try {
+                $response_http = HttpRequestHelper::make_request($api_url, 'GET', $headers);
+                $response_data = HttpRequestHelper::validate_response($response_http);
+            } catch (\Exception $e) {   
+                error_log("Error fetching inventory" . $e->getMessage());
+            }
     
             if (!isset($response_data['data']) || !is_array($response_data['data'])) {
                 error_log("Inventory API returned empty data for batch.");
@@ -189,7 +211,6 @@ class FlourishAPI
         }
     }
 
-
     public function fetch_facilities()
     {
         $facilities = [];
@@ -199,13 +220,9 @@ class FlourishAPI
 
         while ($has_more_facilities) {
             $api_url = $this->url . "/external/api/v1/facilities?offset={$offset}&limit={$limit}";
-
-            $headers = [
-                'Authorization: Basic ' . $this->auth_header,
-            ];
+            $headers = $this->get_headers();
 
             // Use the HttpRequestHelper for the API call
-            
             try
             {
             $response_http = HttpRequestHelper::make_request($api_url, 'GET', $headers);
@@ -224,18 +241,15 @@ class FlourishAPI
 
         return $facilities;
     }
+
     /**
-     * Fetch factility by facility_id
+     * Fetch facility by facility_id
      */
     public function fetch_facility_config($facility_id)
     {
         $facility_config = false;
-
         $api_url = $this->url . "/external/api/v1/facilities/{$facility_id}";
-
-        $headers = [
-            'Authorization: Basic ' . $this->auth_header,
-        ];
+        $headers = $this->get_headers();
 
         // Use the HttpRequestHelper for the API call
         try
@@ -253,19 +267,16 @@ class FlourishAPI
             $facility_config = $response_data['data'];
         } 
 
-        return $facility_config;
+       return $facility_config;
     }
+
     /**
      * Fetch inventory
      */
     public function fetch_inventory($item_id)
     {
         $api_url = $this->url . "/external/api/v1/inventory/summary?item_id=$item_id";
-
-        $headers = [
-            'Authorization: Basic ' . $this->auth_header,
-            'FacilityID: ' . $this->facility_id,
-        ];
+        $headers = $this->get_headers(true); // Include FacilityID header
 
         // Use the HttpRequestHelper for the API call
         try
@@ -280,22 +291,21 @@ class FlourishAPI
             return $response_data['data'];
         } 
     }
+
     /**
      * Get or create a new customer using the provided customer data.
      */
     public function get_or_create_customer_by_email($customer)
     {
         $api_url = $this->url . "/external/api/v1/customers?email=" . urlencode($customer['email']);
-        $headers = [
-            'Authorization: Basic ' . $this->auth_header,
-        ];
+        $headers = $this->get_headers();
 
         try
         {
          $response_http = HttpRequestHelper::make_request($api_url, 'GET', $headers);
          $response_data = HttpRequestHelper::validate_response($response_http);
         } catch (\Exception $e) {
-            throw new \Exception("Error fetching inventory: " . $e->getMessage());
+            throw new \Exception("Error fetching customer: " . $e->getMessage());
         }
 
         if (isset($response_data['data']) && is_array($response_data['data'])) {
@@ -303,7 +313,7 @@ class FlourishAPI
                 $customer['flourish_customer_id'] = $response_data['data'][0]['id'];
             } else {
                 // No customer found, create a new one
-                return $this->create_customer($customer, $headers);
+                return $this->create_customer($customer);
             }
         } else {
             throw new \Exception('Invalid API response format.');
@@ -315,7 +325,7 @@ class FlourishAPI
     /**
      * Create a new customer using the provided customer data.
      */
-    private function create_customer($customer, $headers)
+    private function create_customer($customer)
     {
         // Check Date of Birth
         if (empty($customer['dob'])) {
@@ -325,14 +335,14 @@ class FlourishAPI
 
         // Prepare the URL and headers for the POST request
         $api_url = $this->url . "/external/api/v1/customers";
-        $headers[] = 'Content-Type: application/json';
+        $headers = $this->get_headers(false, true); // Include Content-Type header
 
         try {
             // Use HttpRequestHelper to create a customer
             $response_http = HttpRequestHelper::make_request($api_url, 'POST', $headers, json_encode($customer));
             $response_data = HttpRequestHelper::validate_response($response_http);
         } catch (\Exception $e) {
-            throw new \Exception("Error fetching sales rep: " . $e->getMessage());
+            throw new \Exception("Error creating customer: " . $e->getMessage());
         }
 
         if (isset($response_data['data']) && is_array($response_data['data'])) {
@@ -344,19 +354,14 @@ class FlourishAPI
 
     public function create_retail_order($order) {
         $api_url = $this->url . "/external/api/v2/retail-orders";
-
-        $headers = [
-            'Authorization: Basic ' . $this->auth_header,
-            'FacilityID: ' . $this->facility_id,
-            'Content-Type: application/json',
-        ];
+        $headers = $this->get_headers(true, true); // Include both FacilityID and Content-Type
 
         try {
             // Use HttpRequestHelper to create a retail order
             $response_http = HttpRequestHelper::make_request($api_url, 'POST', $headers, json_encode($order));
             $response_data = HttpRequestHelper::validate_response($response_http);
         } catch (\Exception $e) {
-            throw new \Exception("Error fetching retail order: " . $e->getMessage());
+            throw new \Exception("Error creating retail order: " . $e->getMessage());
         }
 
         if (isset($response_data['data']) && is_array($response_data['data'])) {
@@ -366,21 +371,15 @@ class FlourishAPI
     }
 
     public function create_outbound_order($order) {
-        // No customer yet, let's create one
         $api_url = $this->url . "/external/api/v1/outbound-orders";
-
-        $headers = [
-            'Authorization: Basic ' . $this->auth_header,
-            'FacilityID: ' . $this->facility_id,
-            'Content-Type: application/json',
-        ];
+        $headers = $this->get_headers(true, true); // Include both FacilityID and Content-Type
 
         try {
             // Use HttpRequestHelper to create a outbound order
             $response_http = HttpRequestHelper::make_request($api_url, 'POST', $headers, json_encode($order));
             $response_data = HttpRequestHelper::validate_response($response_http);
         } catch (\Exception $e) {
-            throw new \Exception("Error fetching outbound order: " . $e->getMessage());
+            throw new \Exception("Error creating outbound order: " . $e->getMessage());
         }
 
         if (isset($response_data['data']) && is_array($response_data['data'])) {
@@ -399,10 +398,7 @@ class FlourishAPI
 
         while ($has_more_brands) {
             $api_url = $this->url . "/external/api/v1/brands?offset={$offset}&limit={$limit}";
-
-            $headers = [
-                'Authorization: Basic ' . $this->auth_header,
-            ];
+            $headers = $this->get_headers();
 
             // Use the HttpRequestHelper for the API call
             try
@@ -433,11 +429,8 @@ class FlourishAPI
 
         while ($has_more_sales_reps) {
             $api_url = $this->url . "/external/api/v1/sales-reps?offset={$offset}&limit={$limit}";
+            $headers = $this->get_headers(true); // Include FacilityID header
 
-            $headers = [
-                'Authorization: Basic ' . $this->auth_header,
-                 'FacilityID: ' . $this->facility_id,
-            ];
             // Use the HttpRequestHelper for the API call
             try
             {
@@ -461,13 +454,9 @@ class FlourishAPI
 
     public function fetch_destination_by_license($license)
     {
-       // $license_value = isset($license[0]) ? $license[0] : $license;
        $license_value = $license;
         $api_url = $this->url . "/external/api/v1/destinations?license_number=" . urlencode($license_value);
-
-        $headers = [
-            'Authorization: Basic ' . $this->auth_header,
-        ];
+        $headers = $this->get_headers();
 
         // Use the HttpRequestHelper for the API call
         try
@@ -475,7 +464,7 @@ class FlourishAPI
          $response_http = HttpRequestHelper::make_request($api_url, 'GET', $headers);
          $response_data = HttpRequestHelper::validate_response($response_http);
         } catch (\Exception $e) {
-            throw new \Exception("Error fetching destination by lincense: " . $e->getMessage());
+            throw new \Exception("Error fetching destination by license: " . $e->getMessage());
         }
 
         if (isset($response_data['data']) && is_array($response_data['data'])) {
@@ -485,14 +474,12 @@ class FlourishAPI
         } 
         return false;
     }
+
     public function fetch_destination_by_destination_id($destination_id)
     {
         $destination_value = $destination_id;
         $api_url = $this->url . "/external/api/v1/destinations/" . urlencode($destination_value);
-
-        $headers = [
-            'Authorization: Basic ' . $this->auth_header,
-        ];
+        $headers = $this->get_headers();
 
         // Use the HttpRequestHelper for the API call
         try
@@ -519,10 +506,7 @@ class FlourishAPI
     do {
         // Fix the API URL construction - there was a syntax error in your original code
         $api_url = $this->url . "/external/api/v1/destinations?offset=" . $offset . "&limit=" . $limit;
-        
-        $headers = [
-            'Authorization: Basic ' . $this->auth_header,
-        ];
+        $headers = $this->get_headers();
         
         // Use the HttpRequestHelper for the API call
         try {
@@ -555,17 +539,14 @@ class FlourishAPI
 
     public function fetch_uoms()
     {
-        $brands = [];
+        $uoms = [];
         $offset = 0;
         $limit = self::API_LIMIT; 
         $has_more_uoms = true;
 
         while ($has_more_uoms) {
             $api_url = $this->url . "/external/api/v1/uoms?offset={$offset}&limit={$limit}";
-
-            $headers = [
-                'Authorization: Basic ' . $this->auth_header,
-            ];
+            $headers = $this->get_headers();
 
             // Use the HttpRequestHelper for the API call
             try
@@ -575,7 +556,7 @@ class FlourishAPI
             } catch (\Exception $e) {
                 // Check if it's an authorization error
                 if (str_contains($e->getMessage(), '401')) {
-                    return 'Authorization denied. Please check your username and password.';
+                    return 'Authorization denied. Please check your API key.';
                 }
 
                 // General error message
@@ -583,7 +564,7 @@ class FlourishAPI
             }
 
             if (isset($response_data['data']) && is_array($response_data['data'])) {
-                $uoms = array_merge($brands, $response_data['data']);
+                $uoms = array_merge($uoms, $response_data['data']);
             } 
             $has_more_uoms = isset($response_data['meta']['next']) && !empty($response_data['meta']['next']);
 
@@ -593,7 +574,6 @@ class FlourishAPI
         return $uoms;
    }
  
-
     
    // Helper method to get destination options
 public function get_destination_options() 
@@ -634,16 +614,13 @@ public function get_destination_options()
     return $destination_options;
 }
 
-
    /**
      * Get the order by id.
      */
     public function get_order_by_id($order_id,$order_type_api)
     {
         $api_url = $this->url . "/external/api/v1/{$order_type_api}/{$order_id}";
-        $headers = [
-            'Authorization: Basic ' . $this->auth_header,
-        ];
+        $headers = $this->get_headers();
 
         try
         {
@@ -661,25 +638,20 @@ public function get_destination_options()
 
         return $order_data;
     }
+
     /**
      * Update a existing outbound order
      */
     public function update_outbound_order($order,$flourish_order_id) {
-        // No customer yet, let's create one
         $api_url = $this->url . "/external/api/v1/outbound-orders/{$flourish_order_id}";
-
-        $headers = [
-            'Authorization: Basic ' . $this->auth_header,
-            'FacilityID: ' . $this->facility_id,
-            'Content-Type: application/json',
-        ];
+        $headers = $this->get_headers(true, true); // Include both FacilityID and Content-Type
 
         try {
-            // Use HttpRequestHelper to create a outbound order
+            // Use HttpRequestHelper to update outbound order
             $response_http = HttpRequestHelper::make_request($api_url, 'PUT', $headers, json_encode($order));
             $response_data = HttpRequestHelper::validate_response($response_http);
         } catch (\Exception $e) {
-            throw new \Exception("Error fetching outbound order: " . $e->getMessage());
+            throw new \Exception("Error updating outbound order: " . $e->getMessage());
         }
 
         if (isset($response_data['data']) && is_array($response_data['data'])) {
@@ -688,21 +660,17 @@ public function get_destination_options()
 
         return $response_data['data']['id'];
     }
+
     public function update_retail_order($order,$flourish_order_id) {
         $api_url = $this->url . "/external/api/v1/retail-orders/{$flourish_order_id}";
-
-        $headers = [
-            'Authorization: Basic ' . $this->auth_header,
-            'FacilityID: ' . $this->facility_id,
-            'Content-Type: application/json',
-        ];
+        $headers = $this->get_headers(true, true); // Include both FacilityID and Content-Type
 
         try {
-            // Use HttpRequestHelper to create a retail order
+            // Use HttpRequestHelper to update retail order
             $response_http = HttpRequestHelper::make_request($api_url, 'PUT', $headers, json_encode($order));
             $response_data = HttpRequestHelper::validate_response($response_http);
         } catch (\Exception $e) {
-            throw new \Exception("Error fetching retail order: " . $e->getMessage());
+            throw new \Exception("Error updating retail order: " . $e->getMessage());
         }
 
         if (isset($response_data['data']) && is_array($response_data['data'])) {

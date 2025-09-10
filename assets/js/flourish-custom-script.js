@@ -188,9 +188,8 @@ jQuery(document).ready(function($) {
    // For WooCommerce Order Update button
   $('#post').on('submit', function() {
     const $btn = $('#publish');
-    if ($btn.prop('disabled')) return false;
-
-    $btn.prop('disabled', true).val('Updating...');
+   // if ($btn.prop('disabled')) return false;
+   // $btn.prop('disabled', true).val('Updating...');
   });
 
   

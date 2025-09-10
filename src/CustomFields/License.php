@@ -98,11 +98,12 @@ class License
 private function get_all_sales_reps_formatted() {
     try {
         $api_key = $this->existing_settings['api_key'] ?? '';
-        $username = $this->existing_settings['username'] ?? '';
+        // Remove username line - no longer needed
         $url = $this->existing_settings['url'] ?? '';
         $facility_id = $this->existing_settings['facility_id'] ?? '';
 
-        $flourish_api = new FlourishAPI($username, $api_key, $url, $facility_id);
+        // Updated constructor call - removed username parameter
+        $flourish_api = new FlourishAPI($api_key, $url, $facility_id);
         $sales_reps_raw = $flourish_api->fetch_sales_reps();
         
         $sales_reps_formatted = [];
@@ -360,30 +361,31 @@ public function add_sales_rep_field_to_checkout() {
      * AJAX handler for destination lookup
      */
     public function ship_destination_from_flourish()
-    {
-        if (empty($_POST['destination'])) {
-            wp_send_json_error(['message' => 'Destination value is missing']);
-            return;
-        }
-
-        $api_key = $this->existing_settings['api_key'] ?? '';
-        $username = $this->existing_settings['username'] ?? '';
-        $url = $this->existing_settings['url'] ?? '';
-        $facility_id = $this->existing_settings['facility_id'] ?? '';
-
-        $flourish_api = new FlourishAPI($username, $api_key, $url, $facility_id);
-
-        try {
-            $existing_destination = $flourish_api->fetch_destination_by_destination_id($_POST['destination']);
-            if ($existing_destination && is_array($existing_destination)) {
-                wp_send_json_success(['data' => $existing_destination]);
-            } else {
-                wp_send_json_error(['message' => 'No destination found: ' . $_POST['destination']]);
-            }
-        } catch (\Exception $e) {
-            wp_send_json_error(['message' => 'Error fetching destination: ' . $e->getMessage()]);
-        }
+{
+    if (empty($_POST['destination'])) {
+        wp_send_json_error(['message' => 'Destination value is missing']);
+        return;
     }
+
+    $api_key = $this->existing_settings['api_key'] ?? '';
+    // Remove username line - no longer needed
+    $url = $this->existing_settings['url'] ?? '';
+    $facility_id = $this->existing_settings['facility_id'] ?? '';
+
+    // Updated constructor call - removed username parameter
+    $flourish_api = new FlourishAPI($api_key, $url, $facility_id);
+
+    try {
+        $existing_destination = $flourish_api->fetch_destination_by_destination_id($_POST['destination']);
+        if ($existing_destination && is_array($existing_destination)) {
+            wp_send_json_success(['data' => $existing_destination]);
+        } else {
+            wp_send_json_error(['message' => 'No destination found: ' . $_POST['destination']]);
+        }
+    } catch (\Exception $e) {
+        wp_send_json_error(['message' => 'Error fetching destination: ' . $e->getMessage()]);
+    }
+}
 
     /**
      * Enqueue scripts and styles
@@ -431,53 +433,54 @@ public function add_sales_rep_field_to_checkout() {
      * Save order meta data
      */
     public function save_order_meta($order_id)
-    {
-        // Save license
-        if (isset($_POST['license'])) {
-            update_post_meta($order_id, 'license', sanitize_text_field($_POST['license']));
-        }
-        
-        // Save destination
-        if (!empty($_POST['destination'])) {
-            $destination_id = sanitize_text_field($_POST['destination']);
-            update_post_meta($order_id, '_destination_id', $destination_id);
+{
+    // Save license
+    if (isset($_POST['license'])) {
+        update_post_meta($order_id, 'license', sanitize_text_field($_POST['license']));
+    }
+    
+    // Save destination
+    if (!empty($_POST['destination'])) {
+        $destination_id = sanitize_text_field($_POST['destination']);
+        update_post_meta($order_id, '_destination_id', $destination_id);
 
-            // Get destination text
-            $api_key = $this->existing_settings['api_key'] ?? '';
-            $username = $this->existing_settings['username'] ?? '';
-            $url = $this->existing_settings['url'] ?? '';
-            $facility_id = $this->existing_settings['facility_id'] ?? '';
+        // Get destination text
+        $api_key = $this->existing_settings['api_key'] ?? '';
+        // Remove username line - no longer needed
+        $url = $this->existing_settings['url'] ?? '';
+        $facility_id = $this->existing_settings['facility_id'] ?? '';
 
-            $flourish_api = new FlourishAPI($username, $api_key, $url, $facility_id);
-            try {
-                $destination_options = $flourish_api->fetch_destination_by_destination_id($_POST['destination']);
-                if (isset($destination_options['name'])) {
-                    update_post_meta($order_id, '_destination_text', $destination_options['name']);
-                }
-            } catch (\Exception $e) {
-                error_log('Error saving destination text: ' . $e->getMessage());
+        // Updated constructor call - removed username parameter
+        $flourish_api = new FlourishAPI($api_key, $url, $facility_id);
+        try {
+            $destination_options = $flourish_api->fetch_destination_by_destination_id($_POST['destination']);
+            if (isset($destination_options['name'])) {
+                update_post_meta($order_id, '_destination_text', $destination_options['name']);
             }
-        }
-        // Save sales rep
-        if (!empty($_POST['sales_rep_id'])) {
-            $sales_rep_id = sanitize_text_field($_POST['sales_rep_id']);
-            update_post_meta($order_id, '_sales_rep_id', $sales_rep_id);
-            
-            // Get and save sales rep name
-            try {
-                $sales_rep_name = $this->get_sales_rep_name_by_id($sales_rep_id);
-                if ($sales_rep_name) {
-                    update_post_meta($order_id, '_sales_rep_name', $sales_rep_name);
-                }
-            } catch (Exception $e) {
-                error_log('Error saving sales rep name: ' . $e->getMessage());
-            }
-        }
-        // Save shipping phone
-        if (!empty($_POST['shipping_phone'])) {
-            update_post_meta($order_id, '_shipping_phone', sanitize_text_field($_POST['shipping_phone']));
+        } catch (\Exception $e) {
+            error_log('Error saving destination text: ' . $e->getMessage());
         }
     }
+    // Save sales rep
+    if (!empty($_POST['sales_rep_id'])) {
+        $sales_rep_id = sanitize_text_field($_POST['sales_rep_id']);
+        update_post_meta($order_id, '_sales_rep_id', $sales_rep_id);
+        
+        // Get and save sales rep name
+        try {
+            $sales_rep_name = $this->get_sales_rep_name_by_id($sales_rep_id);
+            if ($sales_rep_name) {
+                update_post_meta($order_id, '_sales_rep_name', $sales_rep_name);
+            }
+        } catch (Exception $e) {
+            error_log('Error saving sales rep name: ' . $e->getMessage());
+        }
+    }
+    // Save shipping phone
+    if (!empty($_POST['shipping_phone'])) {
+        update_post_meta($order_id, '_shipping_phone', sanitize_text_field($_POST['shipping_phone']));
+    }
+}
     /**
      * Get sales rep name by ID
      */
@@ -618,42 +621,41 @@ public function add_sales_rep_field_to_checkout() {
      */
     
     private function get_destination_options_for_user($user_id) {
-
-     $all_destination =get_user_meta($user_id, 'all_destination', true);
-     
-      
-    if ($all_destination=="no")
-    {
-    // First check if user has saved destinations
-    $existing_destination_ids = get_user_meta($user_id, 'destination_ids', true);
-    $existing_destination_texts = get_user_meta($user_id, 'destination_texts', true); 
+    $all_destination = get_user_meta($user_id, 'all_destination', true);
+    
+    if ($all_destination == "no") {
+        // First check if user has saved destinations
+        $existing_destination_ids = get_user_meta($user_id, 'destination_ids', true);
+        $existing_destination_texts = get_user_meta($user_id, 'destination_texts', true); 
+        
         // If user has saved destinations, use those
         if (!empty($existing_destination_ids) && !empty($existing_destination_texts)) { 
             $ids = maybe_unserialize($existing_destination_ids);
             $texts = maybe_unserialize($existing_destination_texts);
             
             if (is_array($ids) && is_array($texts) && count($ids) === count($texts)) {
+                $destination_options = [];
                 for ($i = 0; $i < count($ids); $i++) {
                     $destination_options[$ids[$i]] = $texts[$i];
                 }
                 return $destination_options;
             }
         }
+    } elseif ($all_destination == "yes") { 
+        $api_key = $this->existing_settings['api_key'] ?? '';
+        // Remove username line - no longer needed
+        $url = $this->existing_settings['url'] ?? '';
+        $facility_id = $this->existing_settings['facility_id'] ?? ''; 
+        
+        // Updated constructor call - removed username parameter
+        $flourish_api = new FlourishAPI($api_key, $url, $facility_id); 
+        
+        // Fetch destinations from API
+        $destination_options = $flourish_api->get_destination_options();
+        return $destination_options; 
     }
-    elseif ($all_destination=="yes") 
-    { 
-          
-    $api_key = $this->existing_settings['api_key'] ?? '';
-    $username = $this->existing_settings['username'] ?? '';
-    $url = $this->existing_settings['url'] ?? '';
-    $facility_id = $this->existing_settings['facility_id'] ?? ''; 
-    // Initialize API
-    $flourish_api = new FlourishAPI($username, $api_key, $url, $facility_id); 
-    // Fetch destinations from API
-    $destination_options = $flourish_api->get_destination_options();
-    return $destination_options; 
     
-}
+    return []; // Return empty array if no destinations found
 }
  
      
