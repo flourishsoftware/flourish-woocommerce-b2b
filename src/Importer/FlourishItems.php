@@ -228,66 +228,266 @@ class FlourishItems
         
         return $product_id;
     }
+    /**
+ * Clean up orphaned variations when product attributes are updated
+ */
+public function cleanup_orphaned_variations_after_attribute_update($product_id)
+{
+    $product = wc_get_product($product_id);
+    
+    if (!$product || !$product->is_type('variable')) {
+        return;
+    }
 
-    public function create_attributes_update($wc_product)
-    {
-        $price = get_post_meta($wc_product->get_id(), '_case_price', true);
-        $wc_product->set_price($price);
-        $wc_product->set_regular_price($price);
-        update_post_meta($wc_product->get_id(), '_price', $price);
-        update_post_meta($wc_product->get_id(), '_case_price', $price);
-        // Fetch the UOM value from the product meta
-        $uom = get_post_meta($wc_product->get_id(), 'uom', true);
-       
-        if (empty($uom)) {           
-            return; // Exit if no UOM value exists
-        }
-
-        $attributes = wc_get_attribute_taxonomies(); // Fetches all attribute taxonomies
-        $product_attributes = [];
-
-        foreach ($attributes as $attribute) {
-            $taxonomy = 'pa_'. $attribute->attribute_name; // Example: pa_size  pa_g
-            //$attribute_label='base_uom_'. $attribute->attribute_name; // Example:Base UOM - ea   base_uom_g
-
-
-            // Check if the attribute name slug matches the UOM value
-        if ($taxonomy === 'pa_'.sanitize_title($uom) && taxonomy_exists($taxonomy)) {
-                // Fetch terms for the attribute
-                $terms = get_terms(['taxonomy' => $taxonomy, 'hide_empty' => false]);
-                if (!empty($terms)) {
-                    
-                    $term_names = wp_list_pluck($terms, 'slug'); // Get term names
-                    // Assign attribute to the product
-                    $product_attribute = new WC_Product_Attribute();
-                    $product_attribute->set_name($taxonomy);
-                    $product_attribute->set_options($term_names);
-                    $product_attribute->set_visible(true);
-                    $product_attribute->set_variation(true);
-                    $product_attributes[] = $product_attribute;
+    // Get current product attributes
+    $current_attributes = $product->get_attributes();
+    $valid_attribute_values = [];
+    
+    // Collect all valid attribute-value combinations
+    foreach ($current_attributes as $attribute) {
+        if ($attribute->get_variation()) {
+            $taxonomy = $attribute->get_name();
+            $terms = $attribute->get_terms();
+            
+            if (!empty($terms)) {
+                foreach ($terms as $term) {
+                    $valid_attribute_values['attribute_' . $taxonomy] = $term->name;
                 }
             }
         }
+    }
 
-        // Set the product attributes on the WC_Product_Variable object
-        $wc_product->set_attributes($product_attributes);
-        $wc_product->save();
+    // Get all existing variations
+    $existing_variations = $product->get_children();
+    
+    foreach ($existing_variations as $variation_id) {
+        $should_delete = false;
+        
+        // Get all variation attributes
+        $variation_attributes = get_post_meta($variation_id);
+        
+        foreach ($variation_attributes as $meta_key => $meta_value) {
+            if (strpos($meta_key, 'attribute_') === 0) {
+                $value = is_array($meta_value) ? $meta_value[0] : $meta_value;
+                
+                // Check if this attribute-value combination is still valid
+                if (!isset($valid_attribute_values[$meta_key]) || 
+                    !in_array($value, (array)$valid_attribute_values[$meta_key])) {
+                    $should_delete = true;
+                    error_log("Variation {$variation_id} has invalid attribute: {$meta_key} = {$value}");
+                    break;
+                }
+            }
+        }
+        
+        if ($should_delete) {
+            wp_delete_post($variation_id, true);
+            error_log("Deleted orphaned variation: {$variation_id}");
+        }
+    }
+    
+    // Clear caches
+    wc_delete_product_transients($product_id);
+    wp_cache_delete($product_id, 'posts');
+}
+public function create_attributes_update($wc_product)
+{
+    $price = get_post_meta($wc_product->get_id(), '_case_price', true);
+    $wc_product->set_price($price);
+    $wc_product->set_regular_price($price);
+    update_post_meta($wc_product->get_id(), '_price', $price);
+    update_post_meta($wc_product->get_id(), '_case_price', $price);
+    
+    // Fetch the UOM value from the product meta
+    $uom = get_post_meta($wc_product->get_id(), 'uom', true);
+   
+    if (empty($uom)) {           
+        return; // Exit if no UOM value exists
+    }
 
-        // Step 2: Generate Variations
-        // Create variations based on the attributes
+    // Clean up existing variations first
+    $this->cleanup_orphaned_variations_after_attribute_update($wc_product->get_id());
+    
+    $attributes = wc_get_attribute_taxonomies();
+    $product_attributes = [];
+    
+    foreach ($attributes as $attribute) {
+        $taxonomy = 'pa_'. $attribute->attribute_name;
+        
+        // Check if the attribute name slug matches the UOM value
+        if ($taxonomy === 'pa_'.sanitize_title($uom) && taxonomy_exists($taxonomy)) {
+            // Get existing product attributes to see what terms are already assigned
+            $existing_attributes = $wc_product->get_attributes();
+            $selected_terms = [];
+            
+            // If product already has this attribute, use its selected terms
+            if (isset($existing_attributes[$taxonomy])) {
+                $existing_options = $existing_attributes[$taxonomy]->get_options();
+                $selected_terms = $existing_options;
+                error_log("Using existing attribute terms for {$taxonomy}: " . implode(', ', $selected_terms));
+            } else {
+                // If no existing attribute, get the first term only (to create single variation)
+                $terms = get_terms(['taxonomy' => $taxonomy, 'hide_empty' => false]);
+                if (!empty($terms)) {
+                    // Only use the first term to create a single variation
+                    $first_term = reset($terms);
+                    $selected_terms = [$first_term->slug];
+                    error_log("Using first term for {$taxonomy}: " . $first_term->slug);
+                }
+            }
+            
+            if (!empty($selected_terms)) {
+                // Create product attribute with only selected terms
+                $product_attribute = new WC_Product_Attribute();
+                $product_attribute->set_name($taxonomy);
+                $product_attribute->set_options($selected_terms);
+                $product_attribute->set_visible(true);
+                $product_attribute->set_variation(true);
+                $product_attributes[] = $product_attribute;
+            }
+        }
+    }
+
+    // Set the product attributes on the WC_Product_Variable object
+    $wc_product->set_attributes($product_attributes);
+    $wc_product->save();
+
+    // Generate Variations only for selected terms
+    $attributes_data = [];
+    foreach ($product_attributes as $attribute) {
+        $taxonomy = $attribute->get_name();
+        $options = $attribute->get_options();
+        
+        // Convert slugs to names for variation generation
+        $term_names = [];
+        foreach ($options as $slug) {
+            $term = get_term_by('slug', $slug, $taxonomy);
+            if ($term) {
+                $term_names[] = $term->name;
+            }
+        }
+        $attributes_data[$taxonomy] = $term_names;
+    }
+
+    if (!empty($attributes_data)) {
+        $this->generate_product_variations($wc_product->get_id(), $attributes_data);
+    }
+
+    error_log('Attributes synced and variations created for product ID: ' . $wc_product->get_id());
+}
+
+/**
+ * Helper method to get only the terms that should be used for a specific product
+ * This method can be customized based on your business logic
+ */
+private function get_selected_terms_for_product($product_id, $taxonomy, $uom)
+{
+    // Method 1: Check if product already has specific terms assigned
+    $product = wc_get_product($product_id);
+    if ($product) {
+        $existing_attributes = $product->get_attributes();
+        if (isset($existing_attributes[$taxonomy])) {
+            return $existing_attributes[$taxonomy]->get_options();
+        }
+    }
+    
+    // Method 2: Use product meta to determine which terms to use
+    $preferred_term = get_post_meta($product_id, 'preferred_' . $uom . '_term', true);
+    if ($preferred_term) {
+        $term = get_term_by('name', $preferred_term, $taxonomy);
+        return $term ? [$term->slug] : [];
+    }
+    
+    // Method 3: Default to first term only (creates single variation)
+    $terms = get_terms(['taxonomy' => $taxonomy, 'hide_empty' => false, 'number' => 1]);
+    return !empty($terms) ? [$terms[0]->slug] : [];
+}
+
+/**
+ * Alternative method that forces single variation creation
+ */
+public function create_single_variation_update($wc_product, $preferred_term = null)
+{
+    $price = get_post_meta($wc_product->get_id(), '_case_price', true);
+    $wc_product->set_price($price);
+    $wc_product->set_regular_price($price);
+    update_post_meta($wc_product->get_id(), '_price', $price);
+    update_post_meta($wc_product->get_id(), '_case_price', $price);
+    
+    $uom = get_post_meta($wc_product->get_id(), 'uom', true);
+   
+    if (empty($uom)) {           
+        return;
+    }
+
+    // Force cleanup of all existing variations
+    $this->force_cleanup_variations($wc_product->get_id());
+    
+    $attributes = wc_get_attribute_taxonomies();
+    $product_attributes = [];
+    
+    foreach ($attributes as $attribute) {
+        $taxonomy = 'pa_'. $attribute->attribute_name;
+        
+        if ($taxonomy === 'pa_'.sanitize_title($uom) && taxonomy_exists($taxonomy)) {
+            $terms = get_terms(['taxonomy' => $taxonomy, 'hide_empty' => false]);
+            
+            if (!empty($terms)) {
+                // Use preferred term or first available term
+                $selected_term = null;
+                if ($preferred_term) {
+                    foreach ($terms as $term) {
+                        if ($term->name === $preferred_term || $term->slug === $preferred_term) {
+                            $selected_term = $term;
+                            break;
+                        }
+                    }
+                }
+                
+                // Fallback to first term
+                if (!$selected_term) {
+                    $selected_term = reset($terms);
+                }
+                
+                if ($selected_term) {
+                    $product_attribute = new WC_Product_Attribute();
+                    $product_attribute->set_name($taxonomy);
+                    $product_attribute->set_options([$selected_term->slug]);
+                    $product_attribute->set_visible(true);
+                    $product_attribute->set_variation(true);
+                    $product_attributes[] = $product_attribute;
+                    
+                    error_log("Creating single variation with term: " . $selected_term->name);
+                }
+            }
+        }
+    }
+
+    $wc_product->set_attributes($product_attributes);
+    $wc_product->save();
+
+    // Generate single variation
+    if (!empty($product_attributes)) {
         $attributes_data = [];
         foreach ($product_attributes as $attribute) {
-            $taxonomy = $attribute->get_name(); // Example: base_uom_g
-            $options = $attribute->get_options(); // Example: Small, Medium, Large
-            $attributes_data[$taxonomy] = $options;
+            $taxonomy = $attribute->get_name();
+            $options = $attribute->get_options();
+            
+            $term_names = [];
+            foreach ($options as $slug) {
+                $term = get_term_by('slug', $slug, $taxonomy);
+                if ($term) {
+                    $term_names[] = $term->name;
+                }
+            }
+            $attributes_data[$taxonomy] = $term_names;
         }
 
-        if (!empty($attributes_data)) {
-            $this->generate_product_variations($wc_product->get_id(), $attributes_data);
-        }
-
-        error_log('Attributes synced and variations created for product ID: ' . $wc_product->get_id());
+        $this->generate_product_variations($wc_product->get_id(), $attributes_data);
     }
+
+    error_log('Single variation created for product ID: ' . $wc_product->get_id());
+}
     /** fetch the woocommerce attributes */
     public function create_attributes($wc_product, $product)
     {
