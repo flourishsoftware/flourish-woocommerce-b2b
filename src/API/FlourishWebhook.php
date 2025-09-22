@@ -59,7 +59,7 @@ class FlourishWebhook
 
         // Check if 'auth_signature' exists in headers
         if (empty($headers['auth_signature'][0])) {
-            wc_get_logger()->error(
+         wc_get_logger()->error(
                 "Missing authentication signature in webhooks",
                 ['source' => 'flourish-woocommerce-plugin']
             );
@@ -68,11 +68,11 @@ class FlourishWebhook
 
         // Authentication check
         if (!$this->authenticate($body, $headers['auth_signature'][0])) {
-            wc_get_logger()->error(
+             wc_get_logger()->error(
                 "Invalid authentication signature in webhooks",
                 ['source' => 'flourish-woocommerce-plugin']
             );
-            return new WP_REST_Response(['message' => 'Invalid authentication signature.'], 403);
+            return new WP_REST_Response(['message' => 'Invalid authentication signature.'], 403); 
         }
 
         // Decode the JSON body
@@ -151,28 +151,28 @@ class FlourishWebhook
      * @param array $data The item data from the webhook.
      * @return WP_REST_Response The response object.
      */
-    private function handle_item($data)
-    {
-        // Check if item is eCommerce active
-        if (!$data['ecommerce_active']) {
-            return new WP_REST_Response(['message' => 'Item is not eCommerce active. Not handling.'], 200);
-        }
+   private function handle_item($data)
+{
+    // Check if item is eCommerce active
+    if (!$data['ecommerce_active']) {
+        return new WP_REST_Response(['message' => 'Item is not eCommerce active. Not handling.'], 200);
+    }
 
-        // Check if item has a SKU
-        if (!$data['sku']) {
-            return new WP_REST_Response(['message' => 'Item does not have a SKU. Not handling.'], 200);
-        }
+    // Check if item has a SKU
+    if (!$data['sku']) {
+        return new WP_REST_Response(['message' => 'Item does not have a SKU. Not handling.'], 200);
+    }
 
-        // Brand filtering
-        $brands = $this->existing_settings['brands'] ?? [];
-        $filter_brands = $this->existing_settings['filter_brands'] ?? false;
-        if ($filter_brands && !in_array($data['brand'], $brands)) {
-            return new WP_REST_Response(['message' => 'Item does not match brand filter. Not handling.'], 200);
-        }
+    // Brand filtering
+    $brands = $this->existing_settings['brands'] ?? [];
+    $filter_brands = $this->existing_settings['filter_brands'] ?? false;
+    if ($filter_brands && !in_array($data['brand'], $brands)) {
+        return new WP_REST_Response(['message' => 'Item does not match brand filter. Not handling.'], 200);
+    }
 
-        // Retrieve current inventory for the item
+    try {
+        // Retrieve current inventory for the item - UPDATED: New constructor without username
         $flourish_api = new FlourishAPI(
-            $this->existing_settings['username'] ?? '',
             $this->existing_settings['api_key'] ?? '',
             $this->existing_settings['url'] ?? '',
             $this->existing_settings['facility_id'] ?? ''
@@ -196,10 +196,15 @@ class FlourishWebhook
 
         $flourish_items = new FlourishItems($items);
         $webhook_status = true;
-        $flourish_items->save_as_woocommerce_products($item_sync_options,$webhook_status);
+        $flourish_items->save_as_woocommerce_products($item_sync_options, $webhook_status);
 
         return new WP_REST_Response(['message' => 'Item handled successfully.'], 200);
+    } catch (Exception $e) {
+        error_log('Error handling item webhook: ' . $e->getMessage());
+        return new WP_REST_Response(['message' => 'Error processing item: ' . $e->getMessage()], 500);
     }
+}
+
     /**
      * Handles the 'retail_order' resource type.
      *
@@ -373,62 +378,60 @@ class FlourishWebhook
         
     }
     
-    public function order_stock_update($order_items)
-    {
-        foreach ($order_items as $item) {
-            $flourish_item_id = $item['flourish_item_id'];
-            $product_id = $item['parent_id'] ?? $item['product_id'];
-            
-             
- 
+   public function order_stock_update($order_items)
+{
+    foreach ($order_items as $item) {
+        $flourish_item_id = $item['flourish_item_id'];
+        $product_id = $item['parent_id'] ?? $item['product_id'];
 
-            if ($flourish_item_id && $product_id) {
-                // Fetch sellable quantity from Flourish API
-                // Retrieve settings
+        if ($flourish_item_id && $product_id) {
+            try {
+                // Fetch sellable quantity from Flourish API - UPDATED: New constructor without username
                 $settings = $this->existing_settings;
                 $api_key = $settings['api_key'] ?? '';
-                $username = $settings['username'] ?? '';
                 $url = $settings['url'] ?? '';
                 $facility_id = $settings['facility_id'] ?? '';
-        
-                // Initialize the Flourish API
-                $flourish_api = new FlourishAPI($username, $api_key, $url, $facility_id);
+
+                // Initialize the Flourish API - UPDATED: Removed username parameter
+                $flourish_api = new FlourishAPI($api_key, $url, $facility_id);
                 $inventory_data = $flourish_api->fetch_inventory($flourish_item_id);
-        
+
                 foreach ($inventory_data as $items) {
                     if (!empty($items['sellable_qty'])) {
                         $sellable_quantity = $items['sellable_qty'];
                         $wc_product = wc_get_product($product_id);
                         $reserved_stock = (int) get_post_meta($product_id, '_reserved_stock', true);
+                        
                         if ($sellable_quantity >= 0) {
                             $reserved_with_sellable = $sellable_quantity - $reserved_stock;
                         } else {
                             // Skip calculation or set a default value
                             $reserved_with_sellable = 0; // or null if you want to ignore
                         }  
+                        
                         if ($wc_product) {
+                            if ($this->should_manage_stock($wc_product)) {
+                                continue;
+                            }
                             
-                        if ($this->should_manage_stock($wc_product))
-                        {
-                        continue;
-                        }
                             // Update stock and clear cache
                             $wc_product->set_manage_stock(true);
-							wc_update_product_stock($wc_product, $reserved_with_sellable, 'set');
-							$wc_product->set_stock_quantity($reserved_with_sellable);
-							$wc_product->save();
-							wc_delete_product_transients($product_id);
-							wc_delete_shop_order_transients();
-                            //error_log("Updated stock for product ID: $product_id | Stock: $sellable_quantity");
-                            
+                            wc_update_product_stock($wc_product, $reserved_with_sellable, 'set');
+                            $wc_product->set_stock_quantity($reserved_with_sellable);
+                            $wc_product->save();
+                            wc_delete_product_transients($product_id);
+                            wc_delete_shop_order_transients();
                         }
                     }
                 }
+            } catch (Exception $e) {
+                error_log('Error updating stock for product ' . $product_id . ': ' . $e->getMessage());
+                continue; // Continue with next item even if this one fails
             }
         }
-        return true;
     }
-
+    return true;
+}
     private function should_manage_stock($product) {
         if (!$product) return false;
         $manage_stock = $product->get_manage_stock();

@@ -194,16 +194,18 @@ class SettingsPage
             // Retrieve Flourish item ID from the parent product
             $item_id = $product->get_meta('flourish_item_id');
         }
+        
+        // Updated to use new API key authentication
         $flourish_api = new FlourishAPI(
-            $this->existing_settings['username'] ?? '',
             $this->existing_settings['api_key'] ?? '',
             $this->existing_settings['url'] ?? '',
             $this->existing_settings['facility_id'] ?? ''
         );
+        
         $url = $flourish_api->url;
         $api_url = $url . "/external/api/v1/items?item_id={$item_id}";
         $auth_header = $flourish_api->auth_header;
-        $headers = ['Authorization: Basic ' .  $auth_header ?? ''];
+        $headers = [ 'x-api-key: ' . $auth_header];
 
         try {
             // Make API request
@@ -298,19 +300,18 @@ class SettingsPage
     public function register_settings()
     {
         // Add the main settings section
-        add_settings_section(
+          add_settings_section(
             'flourish_woocommerce_plugin_section',
             '⚙️ Settings from Flourish',
             null,
             'flourish-woocommerce-plugin-settings'
         );
 
-        // Define and add basic settings fields
+        //  Define and add basic settings fields 
         $basic_settings = [
-            'username' => 'Username',
-            'api_key' => 'External API Key',
-            'url' => 'API URL',
-            'webhook_key' => 'Webhook Signing Key',
+            'api_key' => 'External API Key',        // ✅ Correct!
+            'url' => 'API URL',                     // ✅ Correct!
+            'webhook_key' => 'Webhook Signing Key', // ✅ Correct!
         ];
 
         foreach ($basic_settings as $key => $label) {
@@ -370,7 +371,7 @@ class SettingsPage
             'flourish_woocommerce_plugin_section' 
         ); 
         
-        // Add item sync options settings
+       // Add item sync options settings
         $item_sync_options = $this->existing_settings['item_sync_options'] ?? [];
         add_settings_field(
             'item_sync_options',
@@ -382,7 +383,7 @@ class SettingsPage
             'flourish_woocommerce_plugin_section'
         );
 
-        // Handle brand filter settings
+         // Handle brand filter settings
         $brands = $this->get_brands_safe();
         $saved_brands = $this->existing_settings['brands'] ?? [];
         $filter_brands = $this->existing_settings['filter_brands'] ?? false;
@@ -462,7 +463,7 @@ class SettingsPage
     {
         $sanitized_settings = [];
         $sanitized_settings['api_key'] = !empty($settings['api_key']) ? sanitize_text_field($settings['api_key']) : '';
-        $sanitized_settings['username'] = !empty($settings['username']) ? sanitize_text_field($settings['username']) : '';
+        // Removed username sanitization as it's no longer needed
         $sanitized_settings['facility_id'] = !empty($settings['facility_id']) ? sanitize_text_field($settings['facility_id']) : '';
         $sanitized_settings['sales_rep_id'] = !empty($settings['sales_rep_id']) ? sanitize_text_field($settings['sales_rep_id']) : '';
         $sanitized_settings['webhook_key'] = !empty($settings['webhook_key']) ? sanitize_text_field($settings['webhook_key']) : '';
@@ -499,7 +500,7 @@ class SettingsPage
     }
     /// This function renders a setting field based on the provided key and value.
     /// It dynamically sets the input type (text, password, url) and handles special cases
-    /// for the 'webhook_key' field, generating a hashed value if the username and API key exist.
+    /// for the 'webhook_key' field, generating a hashed value if the API key exists.
     public function render_setting_field($key, $setting_value)
     {
         $input_type = 'text'; // Default input type
@@ -517,15 +518,15 @@ class SettingsPage
                     $input_type = 'password';
                 }
                 break;
-
+            
             case 'webhook_key':
                 $readonly = 'readonly';
 
-                if (empty($this->existing_settings['username']) || 
-                    empty($this->existing_settings['api_key'])) {
-                    $setting_value = 'Provide your Username and API key';
+                // Updated webhook key generation to use only API key instead of username + API key
+                if (empty($this->existing_settings['api_key'])) {
+                    $setting_value = 'Provide your API key';
                 } else {
-                    $setting_value = sha1(sha1($this->existing_settings['username']) . sha1($this->existing_settings['api_key']));
+                    $setting_value = sha1($this->existing_settings['api_key']);
                 }
                 break;
         }
@@ -542,6 +543,7 @@ class SettingsPage
         />
         <?php
     }
+
 
     //Render flourish order type retail and outbound in setting page
     public function render_flourish_order_type($setting_value,$order_status_value,$woocommerce_order_status)
@@ -584,7 +586,8 @@ class SettingsPage
     public function render_settings_page()
     {
         $import_products_button_active = true;
-        foreach (['username', 'api_key', 'facility_id', 'url'] as $required_setting) {
+        // Updated to check API key instead of username and API key
+        foreach (['api_key', 'facility_id', 'url'] as $required_setting) {
             if (!isset($this->existing_settings[$required_setting]) || !strlen($this->existing_settings[$required_setting])) {
                 $import_products_button_active = false;
                 break;
@@ -609,8 +612,9 @@ class SettingsPage
         <div class="wrap">
             <h1>Flourish WooCommerce Plugin Settings</h1>
             <p>
-                Retrieve your Username and External API Key from Flourish. <a href="https://docs.flourishsoftware.com/article/xsefgb8b0s-external-api-generate-or-reset-api-key">Generate or Reset External API key</a>
+                Retrieve your External API Key from Flourish. <a href="https://docs.flourishsoftware.com/article/u70dr055pp-flourish-software-external-api-key-management" target="_blank">Learn about the new API Key Management</a>
             </p>
+            
             <h2>🪝 Webhooks</h2>
             <p class="description">
                 More information about webhooks in Flourish can be found here: <a href="https://docs.flourishsoftware.com/article/am15rjpmvg-flourish-webhooks">Flourish Webhooks</a>.
@@ -659,7 +663,7 @@ class SettingsPage
 
             <div class="wrap">
                 <h2>↔️ Import Flourish Items to WooCommerce Products</h2>
-                <p class="description">Once you have provided your username and external API key above, use this button to import items from the Flourish API into WooCommerce products.</p>
+                <p class="description">Once you have provided your API key above, use this button to import items from the Flourish API into WooCommerce products.</p>
                 <br>
                 <form id="case-size-form">
                 <?php wp_nonce_field('case_size_nonce', 'case_size_nonce'); ?>
@@ -766,9 +770,10 @@ class SettingsPage
     {
         $disabled = '';
         $message = 'Select a Flourish facility to sync with';
-        if (!isset($this->existing_settings['username']) || !strlen($this->existing_settings['username']) || !isset($this->existing_settings['api_key']) || !strlen($this->existing_settings['api_key'])) {
+        // Updated to check only API key instead of username and API key
+        if (!isset($this->existing_settings['api_key']) || !strlen($this->existing_settings['api_key'])) {
             $disabled = 'disabled';
-            $message = 'Provide your Username and API key to select a facility.';
+            $message = 'Provide your API key to select a facility.';
         } 
         ?>
         <select id="facility_id" name="flourish_woocommerce_plugin_settings[facility_id]" <?php echo $disabled; ?> width="50px">
@@ -784,9 +789,10 @@ class SettingsPage
     {
         $disabled = '';
         $message = 'Select a sales rep for your orders';
-        if (!isset($this->existing_settings['username']) || !strlen($this->existing_settings['username']) || !isset($this->existing_settings['api_key']) || !strlen($this->existing_settings['api_key'])) {
+        // Updated to check only API key instead of username and API key
+        if (!isset($this->existing_settings['api_key']) || !strlen($this->existing_settings['api_key'])) {
             $disabled = 'disabled';
-            $message = 'Provide your Username and API key to select a facility and see sales reps.';
+            $message = 'Provide your API key to select a facility and see sales reps.';
         } 
         ?>
         <select id="facility_id" name="flourish_woocommerce_plugin_settings[sales_rep_id]" <?php echo $disabled; ?> width="50px">
@@ -907,15 +913,15 @@ class SettingsPage
         }
     }
     
-    // Helper method to initialize the FlourishAPI object
+    // Helper method to initialize the FlourishAPI object - Updated for new authentication
     private function get_flourish_api()
     {
         $api_key = isset($this->existing_settings['api_key']) ? $this->existing_settings['api_key'] : '';
-        $username = isset($this->existing_settings['username']) ? $this->existing_settings['username'] : '';
         $url = isset($this->existing_settings['url']) ? $this->existing_settings['url'] : '';
         $facility_id = isset($this->existing_settings['facility_id']) ? $this->existing_settings['facility_id'] : '';
 
-        return new FlourishAPI($username, $api_key, $url, $facility_id);
+        // Updated constructor call - removed username parameter
+        return new FlourishAPI($api_key, $url, $facility_id);
     }
     
     public function import_products() {

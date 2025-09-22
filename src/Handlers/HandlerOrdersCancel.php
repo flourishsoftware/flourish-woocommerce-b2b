@@ -244,25 +244,25 @@ class HandlerOrdersCancel
     
     }
     protected function initializeFlourishAPI()
-    {
-        $settingsHandler = new SettingsHandler($this->existing_settings); // Assuming $this->existing_settings is passed correctly
-        $api_key = $settingsHandler->getSetting('api_key');
-        $username = $settingsHandler->getSetting('username');
-        $url = $settingsHandler->getSetting('url');
-        $facility_id = $settingsHandler->getSetting('facility_id'); 
-     
-        // Return a new FlourishAPI instance
-        return new FlourishAPI($username, $api_key, $url, $facility_id);
-    }
+{
+    $settingsHandler = new SettingsHandler($this->existing_settings);
+    $api_key = $settingsHandler->getSetting('api_key');
+    // Remove username line - no longer needed
+    $url = $settingsHandler->getSetting('url');
+    $facility_id = $settingsHandler->getSetting('facility_id'); 
+ 
+    // Return a new FlourishAPI instance - UPDATED: New constructor without username
+    return new FlourishAPI($api_key, $url, $facility_id);
+}
     public function order_stock_update_retail($order_items)
-    {
-        foreach ($order_items as $item) {
-            $flourish_item_id = $item['flourish_item_id'];
-            $product_id = $item['parent_id'] ?? $item['product_id'];
-        
-            if ($flourish_item_id && $product_id) {
-                // Fetch sellable quantity from Flourish API
-                // Retrieve settings
+{
+    foreach ($order_items as $item) {
+        $flourish_item_id = $item['flourish_item_id'];
+        $product_id = $item['parent_id'] ?? $item['product_id'];
+    
+        if ($flourish_item_id && $product_id) {
+            try {
+                // Fetch sellable quantity from Flourish API - UPDATED: Use new API
                 $flourish_api = $this->initializeFlourishAPI();
                 $inventory_data = $flourish_api->fetch_inventory($flourish_item_id);
         
@@ -272,12 +272,14 @@ class HandlerOrdersCancel
                         
                         $wc_product = wc_get_product($product_id);
                         $reserved_stock = (int) get_post_meta($product_id, '_reserved_stock', true);
+                        
                         if ($sellable_quantity >= 0) {
                             $reserved_with_sellable = $sellable_quantity - $reserved_stock;
                         } else {
                             // Skip calculation or set a default value
                             $reserved_with_sellable = 0; // or null if you want to ignore
                         }  
+                        
                         if ($wc_product) {
                             // Update stock and clear cache
                             $wc_product->set_manage_stock(true);
@@ -285,14 +287,17 @@ class HandlerOrdersCancel
                             wc_delete_product_transients($product_id);
                             wc_delete_shop_order_transients();
                             $wc_product->save();
-                            //error_log("Updated stock for product ID: $product_id | Stock: $sellable_quantity");
-                            
+                            // Optionally log success
+                            // error_log("Updated stock for product ID: $product_id | Stock: $sellable_quantity");
                         }
                     }
                 }
+            } catch (Exception $e) {
+                error_log('Error updating stock for product ' . $product_id . ': ' . $e->getMessage());
+                continue; // Continue with next item even if this one fails
             }
         }
-        return true;
     }
-
+    return true;
+}
 }

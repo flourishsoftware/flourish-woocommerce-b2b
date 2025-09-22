@@ -116,7 +116,6 @@ public function toggle_sales_rep_management_callback() {
         
         wp_send_json_success([
             'message' => 'Sales rep settings updated successfully',
-            'all_sales_rep' => $all_sales_rep,
         ]);
     }
 
@@ -248,31 +247,31 @@ public function update_user_sales_reps_callback() {
      * Add/Update Destinations on user update.
      */
     public function update_user_destinations_callback() {
-        // Check nonce
-        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'license_management_nonce')) {
-            wp_send_json_error(['message' => 'Invalid nonce']);
-            return;
-        }
-        
-        // Sanitize and validate
-        $user_id = intval($_POST['user_id']);
-        $selected_destination_ids = array_map('sanitize_text_field', (array)$_POST['destinations']);
-        
-        if (!$user_id) {
-            wp_send_json_error(['message' => 'Invalid user']);
-            return;
-        }
-        
-        $destination_texts_array = [];
+    // Check nonce
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'license_management_nonce')) {
+        wp_send_json_error(['message' => 'Invalid nonce']);
+        return;
+    }
+    
+    // Sanitize and validate
+    $user_id = intval($_POST['user_id']);
+    $selected_destination_ids = array_map('sanitize_text_field', (array)$_POST['destinations']);
+    
+    if (!$user_id) {
+        wp_send_json_error(['message' => 'Invalid user']);
+        return;
+    }
+    
+    $destination_texts_array = [];
 
-        // Get API credentials
-        $api_key = $this->existing_settings['api_key'] ?? '';
-        $username = $this->existing_settings['username'] ?? '';
-        $url = $this->existing_settings['url'] ?? '';
-        $facility_id = $this->existing_settings['facility_id'] ?? '';
+    // Get API credentials - UPDATED: Removed username
+    $api_key = $this->existing_settings['api_key'] ?? '';
+    $url = $this->existing_settings['url'] ?? '';
+    $facility_id = $this->existing_settings['facility_id'] ?? '';
 
-        // Initialize API
-        $flourish_api = new FlourishAPI($username, $api_key, $url, $facility_id);  
+    try {
+        // Initialize API - UPDATED: New constructor without username
+        $flourish_api = new FlourishAPI($api_key, $url, $facility_id);  
         $destinations = $flourish_api->fetch_destination_by_facility_name(); 
 
         if ($destinations && is_array($destinations)) {
@@ -298,45 +297,48 @@ public function update_user_sales_reps_callback() {
             'destination_ids' => $selected_destination_ids,
             'destination_texts' => $destination_texts_array,
         ]);
+    } catch (Exception $e) {
+        error_log('Error updating destinations: ' . $e->getMessage());
+        wp_send_json_error(['message' => 'Error updating destinations: ' . $e->getMessage()]);
     }
+}
  
         /**
      * Get sales reps from Flourish API - sorted alphabetically
      */
     private function get_sales_reps()
-    {
-        // Check if we have API settings
-        $api_key = $this->existing_settings['api_key'] ?? '';
-        $username = $this->existing_settings['username'] ?? '';
-        $url = $this->existing_settings['url'] ?? '';
-        $facility_id = $this->existing_settings['facility_id'] ?? ''; 
+{
+    // Check if we have API settings - UPDATED: Removed username
+    $api_key = $this->existing_settings['api_key'] ?? '';
+    $url = $this->existing_settings['url'] ?? '';
+    $facility_id = $this->existing_settings['facility_id'] ?? ''; 
+    
+    try {
+        // Initialize API - UPDATED: New constructor without username
+        $flourish_api = new FlourishAPI($api_key, $url, $facility_id);
+        $sales_reps = $flourish_api->fetch_sales_reps(); 
         
-        try {
-            // Initialize API
-            $flourish_api = new FlourishAPI($username, $api_key, $url, $facility_id);
-            $sales_reps = $flourish_api->fetch_sales_reps(); 
-            
-            // Sort sales reps alphabetically by name
-            if (is_array($sales_reps)) {
-                usort($sales_reps, function($a, $b) {
-                    $name_a = isset($a['first_name'], $a['last_name']) ? 
-                        $a['first_name'] . ' ' . $a['last_name'] : 
-                        ($a['name'] ?? 'Sales Rep');
-                    
-                    $name_b = isset($b['first_name'], $b['last_name']) ? 
-                        $b['first_name'] . ' ' . $b['last_name'] : 
-                        ($b['name'] ?? 'Sales Rep');
-                    
-                    return strcasecmp(trim($name_a), trim($name_b));
-                });
-            }
-            
-            return $sales_reps;
-        } catch (Exception $e) {
-            error_log('Error fetching sales reps: ' . $e->getMessage());
-            return [];
+        // Sort sales reps alphabetically by name
+        if (is_array($sales_reps)) {
+            usort($sales_reps, function($a, $b) {
+                $name_a = isset($a['first_name'], $a['last_name']) ? 
+                    $a['first_name'] . ' ' . $a['last_name'] : 
+                    ($a['name'] ?? 'Sales Rep');
+                
+                $name_b = isset($b['first_name'], $b['last_name']) ? 
+                    $b['first_name'] . ' ' . $b['last_name'] : 
+                    ($b['name'] ?? 'Sales Rep');
+                
+                return strcasecmp(trim($name_a), trim($name_b));
+            });
         }
+        
+        return $sales_reps;
+    } catch (Exception $e) {
+        error_log('Error fetching sales reps: ' . $e->getMessage());
+        return [];
     }
+}
 
     /**
      * Add destination and sales rep management fields to user edit screen
@@ -344,26 +346,34 @@ public function update_user_sales_reps_callback() {
      * @param WP_User $user The user object being edited
      */
     function add_license_field_to_user_edit($user) { 
-        // Fetch existing destinations from user meta
-        $existing_destination_texts = maybe_unserialize(get_user_meta($user->ID, 'destination_texts', true));
-        $existing_destination_ids = maybe_unserialize(get_user_meta($user->ID, 'destination_ids', true));
-        $existing_destination_texts = is_array($existing_destination_texts) ? $existing_destination_texts : [];
-        $existing_destination_ids = is_array($existing_destination_ids) ? $existing_destination_ids : [];
-        $all_destination = get_user_meta($user->ID, 'all_destination', true);
-        $all_sales_rep= get_user_meta($user->ID, 'all_sales_rep', true);
-        $destination_sales_reps = maybe_unserialize(get_user_meta($user->ID, 'destination_sales_reps', true));
-        $destination_sales_reps = is_array($destination_sales_reps) ? $destination_sales_reps : [];
-        
-        // Get API credentials
-        $api_key = $this->existing_settings['api_key'] ?? '';
-        $username = $this->existing_settings['username'] ?? '';
-        $url = $this->existing_settings['url'] ?? '';
-        $facility_id = $this->existing_settings['facility_id'] ?? '';
+    // Fetch existing destinations from user meta
+    $existing_destination_texts = maybe_unserialize(get_user_meta($user->ID, 'destination_texts', true));
+    $existing_destination_ids = maybe_unserialize(get_user_meta($user->ID, 'destination_ids', true));
+    $existing_destination_texts = is_array($existing_destination_texts) ? $existing_destination_texts : [];
+    $existing_destination_ids = is_array($existing_destination_ids) ? $existing_destination_ids : [];
+    $all_destination = get_user_meta($user->ID, 'all_destination', true);
+    $all_sales_rep= get_user_meta($user->ID, 'all_sales_rep', true);
+    $destination_sales_reps = maybe_unserialize(get_user_meta($user->ID, 'destination_sales_reps', true));
+    $destination_sales_reps = is_array($destination_sales_reps) ? $destination_sales_reps : [];
+    
+    // Get API credentials - UPDATED: Removed username
+    $api_key = $this->existing_settings['api_key'] ?? '';
+    $url = $this->existing_settings['url'] ?? '';
+    $facility_id = $this->existing_settings['facility_id'] ?? '';
 
-        // Initialize API
-        $flourish_api = new FlourishAPI($username, $api_key, $url, $facility_id); 
+    // Initialize variables
+    $destination_options = [];
+    $sales_reps = [];
+    
+    try {
+        // Initialize API - UPDATED: New constructor without username
+        $flourish_api = new FlourishAPI($api_key, $url, $facility_id); 
         $destination_options = $flourish_api->get_destination_options();
         $sales_reps = $this->get_sales_reps();
+    } catch (Exception $e) {
+        error_log('Error loading data for user edit: ' . $e->getMessage());
+        // Continue with empty arrays - the UI will show appropriate messages
+    }
         
         ?>
        
@@ -703,4 +713,5 @@ public function update_user_sales_reps_callback() {
         
         <?php
     }
+    
 }
