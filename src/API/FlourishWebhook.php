@@ -68,11 +68,11 @@ class FlourishWebhook
 
         // Authentication check
         if (!$this->authenticate($body, $headers['auth_signature'][0])) {
-            /*  wc_get_logger()->error(
+             wc_get_logger()->error(
                 "Invalid authentication signature in webhooks",
                 ['source' => 'flourish-woocommerce-plugin']
             );
-            return new WP_REST_Response(['message' => 'Invalid authentication signature.'], 403);*/
+            return new WP_REST_Response(['message' => 'Invalid authentication signature.'], 403); 
         }
 
         // Decode the JSON body
