@@ -144,6 +144,8 @@ class FlourishItems
         $new_product = new WC_Product_Simple(); // Create a variable product
        
         }
+        // CHECK AND CLEAN SKU BEFORE SETTING IT
+        $this->ensure_sku_available($sku);
         $new_product->set_sku($sku); // Assign the SKU
         $new_product->set_status('draft'); // set  product status "draft"
         $new_product->save(); // Save to generate an ID
@@ -153,6 +155,49 @@ class FlourishItems
    
      }
     }
+    /**
+ * Check if SKU exists in a trashed product and clean it up
+ */
+private function ensure_sku_available($sku) 
+{
+    global $wpdb;
+    
+    // Check if SKU exists in trashed products
+    $trashed_product = $wpdb->get_row($wpdb->prepare("
+        SELECT p.ID, p.post_status 
+        FROM {$wpdb->posts} p 
+        INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id 
+        WHERE p.post_type IN ('product', 'product_variation') 
+        AND p.post_status = 'trash' 
+        AND pm.meta_key = '_sku' 
+        AND pm.meta_value = %s
+        LIMIT 1
+    ", $sku));
+    
+    if ($trashed_product) {
+        error_log("Found trashed product with SKU '{$sku}'. Permanently deleting...");
+        
+        // Permanently delete the trashed product (bypass trash, force delete)
+        $deleted = wp_delete_post($trashed_product->ID, true);
+        
+        if ($deleted) {
+            // Also clean up lookup table entries
+            $wpdb->delete(
+                $wpdb->prefix . 'wc_product_meta_lookup',
+                array('product_id' => $trashed_product->ID),
+                array('%d')
+            );
+            
+            error_log("Permanently deleted trashed product ID: {$trashed_product->ID} with SKU: {$sku}");
+        } else {
+            error_log("Failed to delete trashed product ID: {$trashed_product->ID}");
+        }
+        
+        return true;
+    }
+    
+    return false;
+}
 
 
     /**
