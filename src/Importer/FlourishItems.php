@@ -144,8 +144,12 @@ class FlourishItems
         $new_product = new WC_Product_Simple(); // Create a variable product
        
         }
-        // CHECK AND CLEAN SKU BEFORE SETTING IT
+        // CHECK AND CLEAN SKU BEFORE SETTING IT 
+        try {
         $this->ensure_sku_available($sku);
+        } catch (\Exception $e) {
+        wc_add_notice($e->getMessage(), 'error'); // or display in admin
+        }
         $new_product->set_sku($sku); // Assign the SKU
         $new_product->set_status('draft'); // set  product status "draft"
         $new_product->save(); // Save to generate an ID
@@ -157,46 +161,56 @@ class FlourishItems
     }
     /**
  * Check if SKU exists in a trashed product and clean it up
- */
-private function ensure_sku_available($sku) 
+ */private function ensure_sku_available($sku)
 {
     global $wpdb;
-    
-    // Check if SKU exists in trashed products
+
+    if (empty($sku)) {
+        throw new \Exception("SKU cannot be empty.");
+    }
+
+    // Find trashed product with this SKU
     $trashed_product = $wpdb->get_row($wpdb->prepare("
-        SELECT p.ID, p.post_status 
-        FROM {$wpdb->posts} p 
-        INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id 
-        WHERE p.post_type IN ('product', 'product_variation') 
-        AND p.post_status = 'trash' 
-        AND pm.meta_key = '_sku' 
+        SELECT p.ID, p.post_status
+        FROM {$wpdb->posts} p
+        INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
+        WHERE p.post_type IN ('product', 'product_variation')
+        AND p.post_status = 'trash'
+        AND pm.meta_key = '_sku'
         AND pm.meta_value = %s
         LIMIT 1
     ", $sku));
-    
-    if ($trashed_product) {
-        error_log("Found trashed product with SKU '{$sku}'. Permanently deleting...");
-        
-        // Permanently delete the trashed product (bypass trash, force delete)
-        $deleted = wp_delete_post($trashed_product->ID, true);
-        
-        if ($deleted) {
-            // Also clean up lookup table entries
+
+    try {
+        if ($trashed_product) {
+            if (get_post_status($trashed_product->ID) !== 'trash') {
+                throw new \Exception("Product with SKU '{$sku}' is not in trash.");
+            }
+
+            $deleted = wp_delete_post($trashed_product->ID, true);
+
+            if (!$deleted) {
+                throw new \Exception("Cannot free SKU '{$sku}' — deletion failed.");
+            }
+
+            // Clean lookup table entry
             $wpdb->delete(
                 $wpdb->prefix . 'wc_product_meta_lookup',
-                array('product_id' => $trashed_product->ID),
-                array('%d')
+                ['product_id' => $trashed_product->ID],
+                ['%d']
             );
-            
-            error_log("Permanently deleted trashed product ID: {$trashed_product->ID} with SKU: {$sku}");
-        } else {
-            error_log("Failed to delete trashed product ID: {$trashed_product->ID}");
+
+            error_log("✅ Permanently deleted trashed product ID {$trashed_product->ID} with SKU '{$sku}'.");
+            return true;
         }
-        
-        return true;
+
+        error_log("ℹ️ No trashed product found for SKU '{$sku}'.");
+        return false;
+
+    } catch (\Exception $e) {
+        error_log("❌ Error ensuring SKU '{$sku}' availability: " . $e->getMessage());
+        throw $e; // rethrow for upper-level handling
     }
-    
-    return false;
 }
 
 
