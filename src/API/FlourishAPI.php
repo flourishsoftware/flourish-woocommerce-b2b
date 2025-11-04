@@ -678,4 +678,40 @@ public function get_destination_options()
         } 
         return $response_data['data']['id'];
     }
+
+    public function flourish_item_exists($item_id,$sku)
+    {
+        $api_url = $this->url . "/external/api/v1/items?item_id=" . $item_id;
+        $headers = $this->get_headers();
+
+        try {
+            $response_http = HttpRequestHelper::make_request($api_url, 'GET', $headers);
+            $response_data = HttpRequestHelper::validate_response($response_http);
+        } catch (\Exception $e) {
+            error_log("Error checking item in Flourish: " . $e->getMessage());
+            return false; 
+        }
+
+        // Validate response structure
+        if (isset($response_data['data']) && is_array($response_data['data'])) {
+            // Check if at least one item found
+            if (count($response_data['data']) > 0) {
+                // Get the first item's SKU and compare with the parameter
+                $response_sku = $response_data['data'][0]['sku'] ?? null;
+                
+                if ($response_sku === $sku) {
+                    return true;
+                } else {
+                    error_log("SKU mismatch: Expected {$sku}, got {$response_sku}");
+                    return false;
+                }
+            } else {
+                error_log("SKU {$sku} not found in Flourish.");
+                return false;
+            }
+        }
+
+        error_log("Invalid Flourish API response for SKU {$sku}");
+        return false;
+    }
 }
