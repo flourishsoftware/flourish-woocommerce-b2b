@@ -566,8 +566,7 @@ class HandlerOrdersSyncNow
         $billing_address = HandlerOrdersOutbound::create_address_object($wc_order, 'billing');
         $destination = HandlerOrdersOutbound::create_destination_object($wc_order, $billing_address);
 
-        // Generate order lines.
-        $order_lines = $this->get_order_lines($wc_order, "create");
+        $order_lines = $this->get_order_lines_check_sku($wc_order, "create");
         if (empty($order_lines)) {
             throw new \Exception("No order lines found for order " . $wc_order->get_id());
         }
@@ -622,7 +621,7 @@ class HandlerOrdersSyncNow
         }
     }
 }
-     public function get_order_lines($wc_order, $action)
+    public function get_order_lines_check_sku($wc_order, $action)
     {
         $order_lines = [];
         $order_id = $wc_order->get_id();
@@ -631,105 +630,136 @@ class HandlerOrdersSyncNow
         $skipped_items = [];
         $synced_items = [];
 
+        //  Initialize Flourish API once (avoid repeated creation per loop)
+        $api_key = $this->existing_settings['api_key'] ?? '';
+        $url = $this->existing_settings['url'] ?? '';
+        $facility_id = $this->existing_settings['facility_id'] ?? '';
+        $flourish_api = new FlourishAPI($api_key, $url, $facility_id);
+
         foreach ($wc_order->get_items() as $item) {
             $variation_id = $item->get_variation_id();
             $parent_product = wc_get_product($item->get_product_id());
-            $product = wc_get_product($variation_id ? $variation_id : $item->get_product_id());
+            $product = wc_get_product($variation_id ?: $item->get_product_id());
             $line_item_id = $item->get_id();
-            $case_quantity = 0;
+
+            if (!$product) {
+                $skipped_items[] = "Unknown product (Line ID: {$line_item_id})";
+                continue;
+            }
+
+            //  Initialize values
+            $case_quantity = 1;
             $unit_price_from_variation = 0;
             $discount_price_from_variation = 0;
 
-            if ($variation_id && $product) {
+            //  Determine case quantity from variation attributes
+            if ($variation_id) {
                 $attributes = $product->get_attributes();
                 foreach ($attributes as $attribute_slug => $attribute_value) {
-                    $taxonomy = $attribute_slug;
-                    $term = get_term_by('slug', $attribute_value, $taxonomy);
+                    $term = get_term_by('slug', $attribute_value, $attribute_slug);
                     if ($term) {
-                        $case_quantity = get_term_meta($term->term_id, 'quantity', true) ?: 1;
+                        $term_qty = get_term_meta($term->term_id, 'quantity', true);
+                        if ($term_qty) {
+                            $case_quantity = (float)$term_qty;
+                        }
                     }
                 }
-
-                $discount_info = $item->get_meta('_wc_cart_discount_info');
-                $original_price = ($discount_info && isset($discount_info['discount_amount']) && $discount_info['discount_amount'] > 0)
-                    ? $discount_info['original_price'] * $item->get_quantity()
-                    : $item->get_total();
-
-                $unit_price_from_variation = ((float)$original_price / $item->get_quantity()) / ($case_quantity ?: 1);
-                $discount_price_from_variation = isset($discount_info['discount_amount'])
-                    ? (float)$discount_info['discount_amount'] * $item->get_quantity()
-                    : 0.0;
             }
 
-            // Handle products with or without SKU
-            if ($product) {
-                $sku = trim($product->get_sku());
-
-                // Skip if SKU missing
-                if (empty($sku)) {
-                    $skipped_items[] = $product->get_name() . " (No SKU)";
-                    continue;
-                }
-                $api_key = $this->existing_settings['api_key'] ?? '';
-                $url = $this->existing_settings['url'] ?? '';
-                $facility_id = $this->existing_settings['facility_id'] ?? '';
-
-                // Initialize API - UPDATED: New constructor without username
-                $flourish_api = new FlourishAPI($api_key, $url, $facility_id); 
-                $item_id = $parent_product->get_meta('flourish_item_id'); 
-                $flourish_item_exists = $flourish_api->flourish_item_exists($item_id,$sku); 
-                if ($flourish_item_exists == false) {
-                    $skipped_items[] = $product->get_name() . " (SKU: {$sku}) not found in Flourish";
-                    continue;
-                }
-
-                $item_weight = (float)$case_quantity;
-                $item_quantity = $item->get_quantity();
-                $product_id = $item->get_product_id();
-                $total_item_quantity = $item_weight > 0 ? $item_weight * $item_quantity : $item_quantity;
-                $total_reserved_stock += $total_item_quantity;
-
-                $discount_info = $item->get_meta('_wc_cart_discount_info');
-                $original_price = ($discount_info && isset($discount_info['discount_amount']) && $discount_info['discount_amount'] > 0)
-                    ? $discount_info['original_price']
-                    : (float)$item->get_total() / $item->get_quantity();
-
-                $unit_price_from_order = $original_price;
-                $discount_price_from_order = isset($discount_info['discount_amount'])
-                    ? (float)$discount_info['discount_amount'] * $item->get_quantity()
-                    : 0.0;
-
-                $unit_price = $unit_price_from_variation > 0 ? $unit_price_from_variation : $unit_price_from_order;
-                $discount_price = $discount_price_from_variation > 0 ? $discount_price_from_variation : $discount_price_from_order;
-
-                if ($action == 'create') {
-                    $line_item_reserved_stock = (int)get_post_meta($line_item_id, '_reserved_stock', true);
-                    $product_reserved_stock = (int)get_post_meta($product_id, '_reserved_stock', true);
-                    $updated_product_reserved_stock = abs($product_reserved_stock - $line_item_reserved_stock);
-                    update_post_meta($product_id, '_reserved_stock', $updated_product_reserved_stock);
-                }
-
-                $order_lines[] = (object)[
-                    'sku' => $sku,
-                    'order_qty' => $total_item_quantity,
-                    'unit_price' => $unit_price,
-                    'discount_price' => $discount_price,
-                ];
-
-                $synced_items[] = $product->get_name() . " (SKU: {$sku})";
+            //  Get discount info safely
+            $discount_info = $item->get_meta('_wc_cart_discount_info');
+            if (!is_array($discount_info)) {
+                $discount_info = [];
             }
+
+            //  Compute pricing
+            $has_discount = isset($discount_info['discount_amount']) && $discount_info['discount_amount'] > 0;
+            $original_price = $has_discount
+                ? (float)$discount_info['original_price'] * $item->get_quantity()
+                : (float)$item->get_total();
+
+            // Avoid double division
+            $unit_price_from_variation = ($original_price / $item->get_quantity()) / ($case_quantity ?: 1);
+            $discount_price_from_variation = $has_discount
+                ? (float)$discount_info['discount_amount'] * $item->get_quantity()
+                : 0.0;
+
+            //  Handle SKU
+            $sku = trim($product->get_sku());
+            if (empty($sku)) {
+                $skipped_items[] = $product->get_name() . " (No SKU)";
+                continue;
+            }
+
+            //  Validate Flourish item existence
+            $item_id = $parent_product ? $parent_product->get_meta('flourish_item_id') : null;
+            if (empty($item_id)) {
+                $skipped_items[] = $product->get_name() . " (Missing Flourish Item ID)";
+                continue;
+            }
+
+            $flourish_item_exists = $flourish_api->flourish_item_exists($item_id, $sku);
+            if ($flourish_item_exists === false) {
+                $skipped_items[] = $product->get_name() . " (SKU: {$sku}) not found in Flourish";
+                continue;
+            }
+
+            //  Calculate total quantities
+            $item_quantity = (int)$item->get_quantity();
+            $total_item_quantity = $case_quantity > 0 ? $case_quantity * $item_quantity : $item_quantity;
+            $total_reserved_stock += $total_item_quantity;
+
+            //  Compute final prices
+            $unit_price_from_order = $has_discount
+                ? (float)$discount_info['original_price']
+                : (float)$item->get_total() / max(1, $item_quantity);
+
+            $discount_price_from_order = $has_discount
+                ? (float)$discount_info['discount_amount'] * $item_quantity
+                : 0.0;
+
+            $unit_price = $unit_price_from_variation ?: $unit_price_from_order;
+            $discount_price = $discount_price_from_variation ?: $discount_price_from_order;
+
+            //  Reserved stock updates (only on create)
+            if ($action === 'create') {
+                $line_item_reserved_stock = (int)get_post_meta($line_item_id, '_reserved_stock', true);
+                $product_reserved_stock = (int)get_post_meta($item->get_product_id(), '_reserved_stock', true);
+                $updated_product_reserved_stock = max(0, $product_reserved_stock - $line_item_reserved_stock);
+                update_post_meta($item->get_product_id(), '_reserved_stock', $updated_product_reserved_stock);
+            }
+
+            //  Add to order lines
+            $order_lines[] = (object)[
+                'sku'            => $sku,
+                'order_qty'      => $total_item_quantity,
+                'unit_price'     => $unit_price,
+                'discount_price' => $discount_price,
+            ];
+
+            $synced_items[] = $product->get_name() . " (SKU: {$sku})";
         }
 
+        //  Compose readable order note
         $note = '';
         if (!empty($synced_items)) {
-            $note .= "Synced Items:\n- " . implode("\n- ", $synced_items) . "\n\n";
+            $note .= "Synced Items:\n" . implode("\n", array_map(fn($i) => "- {$i}", $synced_items)) . "\n\n";
         }
         if (!empty($skipped_items)) {
-            $note .= "Skipped Items :\n- " . implode("\n- ", $skipped_items);
+            $note .= "Skipped Items:\n" . implode("\n", array_map(fn($i) => "- {$i}", $skipped_items));
         }
 
         if (!empty($note)) {
             $wc_order->add_order_note(trim($note));
+        }
+
+        // Optional debug log for background syncs
+        if (isset($this->logger)) {
+            $this->logger->info("Order #{$order_id} Sync Summary", [
+                'synced_items' => $synced_items,
+                'skipped_items' => $skipped_items,
+                'total_reserved_stock' => $total_reserved_stock,
+            ]);
         }
 
         return $order_lines;
