@@ -306,7 +306,7 @@ public function create_attributes_update($wc_product)
     }
 
     // Clean up existing variations first
-    $this->cleanup_orphaned_variations_after_attribute_update($wc_product->get_id());
+    //$this->cleanup_orphaned_variations_after_attribute_update($wc_product->get_id());
     
     $attributes = wc_get_attribute_taxonomies();
     $product_attributes = [];
