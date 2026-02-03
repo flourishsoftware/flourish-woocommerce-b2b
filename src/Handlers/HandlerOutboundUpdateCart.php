@@ -353,7 +353,14 @@ class HandlerOutboundUpdateCart
 
     // If stock management is enabled and  backorders are enabled, return unlimited stock
     if ($this->should_manage_stock($product)) {
-        return;
+        $backorder_msg = $product_parent->backorders_require_notification()
+        ? 'Available on backorder'
+        : 'In stock';
+        return [
+           'stock_quantity' => 999999,
+            'maxQty' => 999999,
+            'stockMessage' => '<div class="woocommerce-variation-availability"><p class="stock on-backorder">' . $backorder_msg . '</p></div>',
+        ];
     }
 
     // Get stock quantities for managed products
