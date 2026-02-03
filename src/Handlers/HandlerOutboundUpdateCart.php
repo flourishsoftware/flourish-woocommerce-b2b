@@ -189,17 +189,17 @@ class HandlerOutboundUpdateCart
                 },
 
                 updateStockMessage: function(data) {
-                    let displayMessage = this.formatStockMessage(data);
+                    // Remove all existing stock messages first
+                    $('.woocommerce-variation-availability').remove();
+                    $('p.stock').remove();
 
-                    // Update stock message
-                    $('.woocommerce-variation-availability p.stock').not(':first').remove();
-                    const $stockContainer = $('.woocommerce-variation-availability p.stock:first');
-
-                    if ($stockContainer.length) {
-                        $stockContainer.text(displayMessage).show();
+                    // Use stockMessage from server if provided (for backorders), otherwise format locally
+                    if (data.stockMessage) {
+                        $('.woocommerce-variation-add-to-cart, form.cart').before(data.stockMessage);
                     } else {
+                        let displayMessage = this.formatStockMessage(data);
                         $('.woocommerce-variation-add-to-cart, form.cart').before(
-                            '<p class="stock in-stock">' + displayMessage + '</p>'
+                            '<div class="woocommerce-variation-availability"><p class="stock in-stock">' + displayMessage + '</p></div>'
                         );
                     }
                 },
@@ -351,13 +351,13 @@ class HandlerOutboundUpdateCart
         return false;
     }
 
-    // If stock management is enabled and  backorders are enabled, return unlimited stock
+    // If stock management is disabled, allow ordering
     if ($this->should_manage_stock($product)) {
         $backorder_msg = $product_parent->backorders_require_notification()
-        ? 'Available on backorder'
-        : 'In stock';
+            ? 'Available on backorder'
+            : 'In stock';
         return [
-           'stock_quantity' => 999999,
+            'stock_quantity' => 999999,
             'maxQty' => 999999,
             'stockMessage' => '<div class="woocommerce-variation-availability"><p class="stock on-backorder">' . $backorder_msg . '</p></div>',
         ];
@@ -374,6 +374,15 @@ class HandlerOutboundUpdateCart
         $max_qty = $total_qty > 0 ? floor($total_qty / $pack_size) : 0;
     } else {
         $max_qty = $total_qty;
+    }
+
+    // If backorders are allowed and stock is 0, allow ordering anyway
+    if ($max_qty <= 0 && $product_parent->backorders_allowed()) {
+        return [
+            'stock_quantity' => $total_qty,
+            'maxQty' => 999999,
+            'stockMessage' => '<div class="woocommerce-variation-availability"><p class="stock available-on-backorder">Available on backorder</p></div>',
+        ];
     }
 
     // Generate stock message
@@ -898,9 +907,7 @@ class HandlerOutboundUpdateCart
     if (!$product) return false;
 
     $manage_stock = $product->get_manage_stock();
-    $backorders_allowed = $product->get_backorders();
-    $stock_status=$product->get_stock_status();
-    // Fix to allow backordering
+    // Return true (skip stock management) only if stock management is disabled
     return $manage_stock === false;
 }
 }
