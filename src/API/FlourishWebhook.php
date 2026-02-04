@@ -44,7 +44,7 @@ class FlourishWebhook
 
     }
 
-    
+
     /**
      * Handles incoming webhook requests.
      *
@@ -72,7 +72,7 @@ class FlourishWebhook
                 "Invalid authentication signature in webhooks",
                 ['source' => 'flourish-woocommerce-plugin']
             );
-            return new WP_REST_Response(['message' => 'Invalid authentication signature.'], 403); 
+            return new WP_REST_Response(['message' => 'Invalid authentication signature.'], 403);
         }
 
         // Decode the JSON body
@@ -112,7 +112,7 @@ class FlourishWebhook
         // Log success
         //$this->log_webhook_result('success', $body);
         return new WP_REST_Response(['message' => 'Webhook processed successfully.'], 200);
-        
+
     }
     private function log_webhook_result($status, $payload, $error = null)
     {
@@ -131,10 +131,10 @@ class FlourishWebhook
 
         // Define a context for the log (optional, useful for filtering logs)
         $context = ['source' => 'flourish-webhook'];
-        
+
         if($payload['resource_type'] == "item" )
 		{
-		   $this->handle_item($payload['data']);	
+		   $this->handle_item($payload['data']);
 		}
         // Write to WooCommerce logger
         if ($status === 'success') {
@@ -270,7 +270,7 @@ class FlourishWebhook
         }
         $this->sync_cancel_update($wc_order,$post_id);
         $wc_order->update_status($new_status, 'Flourish order has been ' . $data['order_status'] . '. Updated by API webhook.');
-        
+
         return new WP_REST_Response(['message' => 'Order handled successfully.'], 200);
     }
 
@@ -312,8 +312,8 @@ class FlourishWebhook
             // Skip calculation or set a default value
             $woocommerce_stock = 0; // or null if you want to ignore
         }
-        $wc_product->set_stock_quantity($woocommerce_stock); 
-        
+        $wc_product->set_stock_quantity($woocommerce_stock);
+
         //$wc_product->set_stock_quantity($data['sellable_qty']);
         $wc_product->save();
 
@@ -338,14 +338,14 @@ class FlourishWebhook
         $order_items = $this->get_flourish_item_ids_from_order($post_id);
         $this->order_stock_update($order_items);
         return true;
-        
+
     }
     public static function get_flourish_item_ids_from_order($order_id)
     {
         $wc_order = wc_get_order($order_id);
 
         $flourish_items = [];
-        
+
         foreach ($wc_order->get_items() as $item) {
             $product = $item->get_product(); // Get the product object
             if ($product) {
@@ -354,7 +354,7 @@ class FlourishWebhook
                     // Get the parent (variable) product
                     $parent_id = $product->get_parent_id();
                     $parent_product = wc_get_product($parent_id);
-        
+
                     if ($parent_product) {
                         // Retrieve Flourish item ID from the parent product
                         $flourish_item_id = $parent_product->get_meta('flourish_item_id');
@@ -363,7 +363,7 @@ class FlourishWebhook
                     // If it's not a variation, get the Flourish item ID directly
                     $flourish_item_id = $product->get_meta('flourish_item_id');
                 }
-        
+
                 // Add product details to the array
                 $flourish_items[] = [
                     'product_id' => $product->get_id(),
@@ -373,11 +373,11 @@ class FlourishWebhook
                 ];
             }
         }
-        
+
         return $flourish_items;
-        
+
     }
-    
+
    public function order_stock_update($order_items)
 {
     foreach ($order_items as $item) {
@@ -401,19 +401,19 @@ class FlourishWebhook
                         $sellable_quantity = $items['sellable_qty'];
                         $wc_product = wc_get_product($product_id);
                         $reserved_stock = (int) get_post_meta($product_id, '_reserved_stock', true);
-                        
+
                         if ($sellable_quantity >= 0) {
                             $reserved_with_sellable = $sellable_quantity - $reserved_stock;
                         } else {
                             // Skip calculation or set a default value
                             $reserved_with_sellable = 0; // or null if you want to ignore
-                        }  
-                        
+                        }
+
                         if ($wc_product) {
                             if ($this->should_manage_stock($wc_product)) {
                                 continue;
                             }
-                            
+
                             // Update stock and clear cache
                             $wc_product->set_manage_stock(true);
                             wc_update_product_stock($wc_product, $reserved_with_sellable, 'set');
@@ -435,9 +435,7 @@ class FlourishWebhook
     private function should_manage_stock($product) {
         if (!$product) return false;
         $manage_stock = $product->get_manage_stock();
-        $backorders_allowed = $product->get_backorders();  
-        $stock_status=$product->get_stock_status(); 
-        // Return true only if stock management is enabled AND backorders are allowed
-        return $manage_stock===false && ($backorders_allowed === 'notify' || $backorders_allowed === 'yes' || $stock_status=="onbackorder" || $stock_status=="instock");
-    } 
+       // Return true (skip stock management) only if stock management is disabled
+        return $manage_stock === false;
+    }
 }
