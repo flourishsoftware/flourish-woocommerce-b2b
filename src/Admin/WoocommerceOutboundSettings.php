@@ -29,10 +29,34 @@ class WoocommerceOutboundSettings
         add_action('wp_ajax_update_user_sales_reps', [$this, 'update_user_sales_reps_callback']);
         add_action('wp_ajax_update_sales_rep_selection_toggle', [$this, 'update_sales_rep_selection_toggle_callback']);
         add_action('wp_ajax_assign_destination_sales_reps', [$this, 'assign_destination_sales_reps_callback']);
-        
+        add_action('woocommerce_order_status_changed',[$this,'disable_emails_on_manual_status_change'],10, 4);
+      
         // Enqueue scripts for admin user edit pages
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_scripts']);
     }
+
+        /**
+     * Disable WooCommerce emails when manually changing order from Completed to another status
+     */
+    public function disable_emails_on_manual_status_change($order_id, $old_status, $new_status, $order) {
+            // Only apply when the change happens in the admin manually (not programmatically or via AJAX)
+            if (!is_admin() || (defined('DOING_AJAX') && DOING_AJAX)) {
+                return;
+            }
+
+            // If the order is moved from 'completed' to any other status
+            if ($old_status === 'completed' && $new_status !== 'completed') {
+
+                // Disable customer/admin email notifications for this order transition
+                add_filter('woocommerce_email_enabled_customer_completed_order', '__return_false');
+                add_filter('woocommerce_email_enabled_customer_processing_order', '__return_false');
+                add_filter('woocommerce_email_enabled_customer_on_hold_order', '__return_false');
+                add_filter('woocommerce_email_enabled_customer_pending_order', '__return_false');
+                add_filter('woocommerce_email_enabled_customer_refunded_order', '__return_false');
+                add_filter('woocommerce_email_enabled_new_order', '__return_false');
+            }
+        } 
+    
     /**
  * Toggle sales rep management visibility
  */
