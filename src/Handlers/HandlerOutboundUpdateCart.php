@@ -193,12 +193,17 @@ class HandlerOutboundUpdateCart
                     $('.woocommerce-variation-availability').remove();
                     $('p.stock').remove();
 
+                    // Determine where to insert the message
+                    const $insertTarget = $('.woocommerce-variation-add-to-cart').length
+                        ? $('.woocommerce-variation-add-to-cart')
+                        : $('form.cart');
+
                     // Use stockMessage from server if provided (for backorders), otherwise format locally
                     if (data.stockMessage) {
-                        $('.woocommerce-variation-add-to-cart, form.cart').before(data.stockMessage);
+                        $insertTarget.before(data.stockMessage);
                     } else {
                         let displayMessage = this.formatStockMessage(data);
-                        $('.woocommerce-variation-add-to-cart, form.cart').before(
+                        $insertTarget.before(
                             '<div class="woocommerce-variation-availability"><p class="stock in-stock">' + displayMessage + '</p></div>'
                         );
                     }
@@ -385,13 +390,11 @@ class HandlerOutboundUpdateCart
         ];
     }
 
-    // Generate stock message
-    $stock_message = $this->generate_stock_message($total_qty);
-
+    // For regular stock-managed products, return raw data without stockMessage
+    // This allows the JS formatStockMessage function to apply the woocommerce_stock_format setting
     return [
         'stock_quantity' => $total_qty,
         'maxQty' => $max_qty,
-        'stockMessage' => $stock_message,
     ];
 }
 
@@ -416,19 +419,6 @@ class HandlerOutboundUpdateCart
         return 1; // Default pack size
     }
 
-    /**
-     * Generate stock message HTML
-     */
-    private function generate_stock_message($total_qty) {
-        $status_class = $total_qty > 0 ? 'in-stock' : 'out-of-stock';
-        $message = $total_qty > 0 ? "{$total_qty} in stock" : 'Out of stock';
-
-        return sprintf(
-            '<div class="woocommerce-variation-availability"><p class="stock %s">%s</p></div>',
-            $status_class,
-            $message
-        );
-    }
 
     /**
      * Get current cart items
