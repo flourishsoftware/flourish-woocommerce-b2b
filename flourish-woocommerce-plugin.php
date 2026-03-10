@@ -3,7 +3,7 @@
  * Plugin Name: Flourish WooCommerce Plugin
  * Plugin URI: https://docs.flourishsoftware.com/article/yow6wworay-flourish-woocommerce-plugin-for-wordpress
  * Description: A WooCommerce plugin for your Flourish data.
- * Version: 1.4.0
+ * Version: 1.4.1
  * Author: Flourish Software
  * Author URI: https://www.flourishsoftware.com/
  * License: GPLv3
