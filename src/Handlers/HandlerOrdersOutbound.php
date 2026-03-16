@@ -11,10 +11,11 @@ use FlourishWooCommercePlugin\Handlers\HandlerOrdersSyncNow;
 class HandlerOrdersOutbound
 {
     public $existing_settings;
+    public $woocommerce_order_status;
 
     public function __construct($existing_settings)
     {
-        $this->existing_settings = $existing_settings; 
+        $this->existing_settings = $existing_settings;
         // Store as class property so it's accessible in all methods
         $this->woocommerce_order_status = $this->existing_settings['woocommerce_order_status'] ?? '';
     }

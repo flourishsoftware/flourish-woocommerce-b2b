@@ -26,7 +26,7 @@ class FlourishWooCommercePlugin
         $this->plugin_basename = $plugin_basename;
         register_activation_hook($plugin_basename, [$this, 'activate']);
         register_deactivation_hook($plugin_basename, [$this, 'deactivate']);
-        register_uninstall_hook($plugin_basename, [$this, 'uninstall']);
+        register_uninstall_hook($plugin_basename, [__CLASS__, 'uninstall']);
 
         $existing_settings = get_option('flourish_woocommerce_plugin_settings');
 
@@ -51,10 +51,10 @@ class FlourishWooCommercePlugin
             );
 
             wp_enqueue_script(
-                'case-size-js',  
-                plugin_dir_url(dirname(__FILE__)) . 'assets/js/flourish-custom-script.js', 
-                ['jquery'], 
-                '1.0.0', 
+                'case-size-js',
+                plugin_dir_url(dirname(__FILE__)) . 'assets/js/flourish-custom-script.js',
+                ['jquery'],
+                '1.0.0',
                  true
             );
 
@@ -62,6 +62,20 @@ class FlourishWooCommercePlugin
                 'ajax_url' => admin_url('admin-ajax.php'),
                 'nonce'    => wp_create_nonce('case_size_nonce'),
                 'deleteNonce' => wp_create_nonce('delete_case_size_nonce'),
+            ]);
+
+            // Enqueue custom checkout license script and localize data for checkout page
+            wp_enqueue_script(
+                'custom-checkout-license',
+                plugin_dir_url(dirname(__FILE__)) . 'assets/js/custom-checkout-license.js',
+                ['jquery'],
+                '1.0.0',
+                true
+            );
+
+            wp_localize_script('custom-checkout-license', 'licenseData', [
+                'ajax_url' => admin_url('admin-ajax.php'),
+                'nonce'    => wp_create_nonce('license_management_nonce'),
             ]);
 
             // Enqueue scripts only on user profile pages
@@ -113,11 +127,11 @@ class FlourishWooCommercePlugin
 
     public function deactivate()
     {
-         
+
     }
 
-    public function uninstall()
+    public static function uninstall()
     {
-        
+
     }
 }

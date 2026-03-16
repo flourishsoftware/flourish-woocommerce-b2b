@@ -99,3 +99,17 @@ composer install
 - No `.gitignore` file exists — be careful not to commit sensitive files
 - `src/CustomFields/License copy.php` is a legacy/backup file — not actively used
 - Plugin updates are distributed via GitHub releases on the `main` branch
+
+## WooCommerce Checkout Requirement
+
+**CRITICAL:** The plugin's custom checkout fields (destination selector, customer selector, sales rep field) use traditional WordPress hooks that only work with **WooCommerce Classic Checkout**, NOT WooCommerce Blocks.
+
+If WooCommerce Blocks Checkout is enabled (default in newer versions):
+1. Go to the **Checkout page** in Pages admin
+2. **Delete the Cart block** from the page content
+3. **Add the shortcode** `[woocommerce_checkout]` in its place
+4. Save the page
+
+This switches the checkout to legacy/classic mode and enables the plugin's custom checkout fields to render properly. Without this step, destination and customer selectors will not appear on checkout.
+
+Future enhancement: Implement checkout fields using WooCommerce Blocks API for blocks-based checkout support.

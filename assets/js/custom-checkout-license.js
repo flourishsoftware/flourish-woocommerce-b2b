@@ -275,7 +275,8 @@ jQuery(document).ready(function($) {
     });
         // Add validation to checkout process
         $('form.checkout').on('checkout_place_order', function() {
-            if ($('#destination').val() === '') {
+            // Only validate destination if the field exists (for sales reps/admins)
+            if ($('#destination').length && $('#destination').val() === '') {
                 // Show error message
                 if (!$('#destination_field .woocommerce-error').length) {
                     $('#destination_field').append('<div class="woocommerce-error">' +

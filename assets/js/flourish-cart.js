@@ -379,8 +379,8 @@ jQuery(document).ready(function ($) {
 
     // Set the interval for the AJAX call (every 6 sec)
     if (!window.isCartReservationIntervalInitialized) {
-        window.isCartReservationIntervalInitialized = true;        
-        setInterval(CartReservationTimeout, 1000); // 6 sec
+        window.isCartReservationIntervalInitialized = true;
+        setInterval(CartReservationTimeout, 6000); // 6 sec
     }
 });
 jQuery(document).on('click', '.remove', function(e) {
