@@ -84,8 +84,28 @@ class FlourishWooCommercePlugin
           
     }
     public function activate()
-    { 
-         
+    {
+        // Create Sales Rep role
+        $this->create_sales_rep_role();
+    }
+
+    /**
+     * Create the Sales Rep role if it doesn't exist
+     */
+    private function create_sales_rep_role()
+    {
+        // Check if role already exists
+        if (!get_role('sales_rep')) {
+            add_role(
+                'sales_rep',
+                __('Sales Representative', 'flourish-woocommerce'),
+                [
+                    'read' => true,
+                    'edit_posts' => false,
+                    'delete_posts' => false,
+                ]
+            );
+        }
     }
 
 

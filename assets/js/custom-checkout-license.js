@@ -177,20 +177,17 @@ jQuery(document).ready(function($) {
     $(document).on('change', '#destination', function() {
         var destinationId = $(this).val();
         var $salesRepField = $('#sales_rep_id');
+        var $customerField = $('#order_for_customer');
 
         // Skip AJAX if user has all destinations and all sales reps (already preloaded)
-        if (window.salesRepCheckoutData.allDestination === 'yes' && 
+        if (window.salesRepCheckoutData && window.salesRepCheckoutData.allDestination === 'yes' &&
             window.salesRepCheckoutData.allSalesRep === 'yes') {
             console.log('Skipping AJAX - sales reps already preloaded');
-            return;
-        }
-        
-        
-        if (destinationId) {
+        } else if (destinationId && $salesRepField.length) {
             // Show loading state
             $salesRepField.prop('disabled', true);
             $salesRepField.html('<option value="">Loading sales representatives...</option>');
-            
+
             // Make AJAX call to get sales reps for this destination
             $.ajax({
                 url: licenseData.ajax_url,
@@ -204,21 +201,21 @@ jQuery(document).ready(function($) {
                     if (response.success && response.data.sales_reps) {
                         // Clear the dropdown
                         $salesRepField.empty();
-                        
+
                         // Add default option
                         $salesRepField.append('<option value="">Select a sales representative...</option>');
-                        
+
                         // Add sales rep options
                         $.each(response.data.sales_reps, function(repId, repName) {
                             $salesRepField.append('<option value="' + repId + '">' + repName + '</option>');
                         });
-                        
+
                         // Enable the field
                         $salesRepField.prop('disabled', false);
-                        
+
                         // Update description
                         $salesRepField.closest('.form-row').find('small').text('Select your assigned sales representative for this destination.');
-                        
+
                     } else {
                         // No sales reps found
                         $salesRepField.html('<option value="">No sales representatives available</option>');
@@ -231,25 +228,74 @@ jQuery(document).ready(function($) {
                     $salesRepField.prop('disabled', true);
                 }
             });
-        } else {
-            // No destination selected, reset sales rep field
-            $salesRepField.html('<option value="">Select destination first</option>');
-            $salesRepField.prop('disabled', true);
+        }
+
+        // Load customers for sales reps
+        if (destinationId && $customerField.length) {
+            $customerField.prop('disabled', true);
+            $customerField.html('<option value="">Loading customers...</option>');
+
+            $.ajax({
+                url: licenseData.ajax_url,
+                type: 'POST',
+                data: {
+                    action: 'get_customers_by_destination',
+                    destination_id: destinationId,
+                    nonce: licenseData.nonce
+                },
+                success: function(response) {
+                    if (response.success && response.data.customers) {
+                        $customerField.empty();
+                        $customerField.append('<option value="">Select a customer...</option>');
+
+                        $.each(response.data.customers, function(customerId, customerName) {
+                            $customerField.append('<option value="' + customerId + '">' + customerName + '</option>');
+                        });
+
+                        $customerField.prop('disabled', false);
+                        $('#customer_selector_field').show();
+                    } else {
+                        $customerField.html('<option value="">No customers available</option>');
+                        $customerField.prop('disabled', true);
+                        $('#customer_selector_field').hide();
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Error loading customers:', error);
+                    $customerField.html('<option value="">Error loading customers</option>');
+                    $customerField.prop('disabled', true);
+                }
+            });
+        } else if (!destinationId) {
+            // Reset customer field
+            $customerField.html('<option value="">Select destination first</option>');
+            $customerField.prop('disabled', true);
+            $('#customer_selector_field').hide();
         }
     });
-        // Add validation to checkout process 
-        $('form.checkout').on('checkout_place_order', function() { 
-            if ($('#destination').val() === '') { 
-                // Show error message 
-                if (!$('#destination_field .woocommerce-error').length) { 
-                    $('#destination_field').append('<div class="woocommerce-error">' +  
-                        'Please select a destination' +  
-                        '</div>'); 
-                } 
-                 setButtonState('woocommerce_checkout_place_order', false);
-                return false; 
-            } 
-            return true; 
+        // Add validation to checkout process
+        $('form.checkout').on('checkout_place_order', function() {
+            if ($('#destination').val() === '') {
+                // Show error message
+                if (!$('#destination_field .woocommerce-error').length) {
+                    $('#destination_field').append('<div class="woocommerce-error">' +
+                        'Please select a destination' +
+                        '</div>');
+                }
+                setButtonState('woocommerce_checkout_place_order', false);
+                return false;
+            }
+            // Validate customer field if visible
+            if ($('#customer_selector_field').is(':visible') && $('#order_for_customer').val() === '') {
+                if (!$('#customer_selector_field .woocommerce-error').length) {
+                    $('#customer_selector_field').append('<div class="woocommerce-error">' +
+                        'Please select a customer account' +
+                        '</div>');
+                }
+                setButtonState('woocommerce_checkout_place_order', false);
+                return false;
+            }
+            return true;
         }); 
   
   

@@ -27,19 +27,23 @@ class License
 
          // Add the sales rep field to checkout
         add_action('woocommerce_after_checkout_shipping_form', [$this, 'add_sales_rep_field_to_checkout']);
-        
+
                 // AJAX handler for getting sales reps by destination
         add_action('wp_ajax_get_sales_reps_by_destination', [$this, 'get_sales_reps_by_destination']);
         add_action('wp_ajax_nopriv_get_sales_reps_by_destination', [$this, 'get_sales_reps_by_destination']);
 
+        // Add customer selector for sales reps
+        add_action('woocommerce_after_checkout_shipping_form', [$this, 'add_customer_selector_for_sales_rep'], 15);
+        add_action('wp_ajax_get_customers_by_destination', [$this, 'get_customers_by_destination']);
+        add_action('wp_ajax_nopriv_get_customers_by_destination', [$this, 'get_customers_by_destination']);
 
-        
+
         // Always display shipping fields
         add_filter('woocommerce_cart_needs_shipping_address', '__return_true');
         add_action('wp_head', [$this, 'add_checkout_styles']);
         add_action('woocommerce_before_checkout_shipping_form', [$this,'add_shipping_details_heading'], 10);
         add_filter('woocommerce_checkout_get_value', [$this, 'clear_field_values'], 10, 2);
-        
+
         // Override WooCommerce address validation
         add_action('woocommerce_after_checkout_validation', [$this, 'override_address_validation'], 10, 2);
     }
@@ -438,7 +442,7 @@ public function add_sales_rep_field_to_checkout() {
     if (isset($_POST['license'])) {
         update_post_meta($order_id, 'license', sanitize_text_field($_POST['license']));
     }
-    
+
     // Save destination
     if (!empty($_POST['destination'])) {
         $destination_id = sanitize_text_field($_POST['destination']);
@@ -465,7 +469,7 @@ public function add_sales_rep_field_to_checkout() {
     if (!empty($_POST['sales_rep_id'])) {
         $sales_rep_id = sanitize_text_field($_POST['sales_rep_id']);
         update_post_meta($order_id, '_sales_rep_id', $sales_rep_id);
-        
+
         // Get and save sales rep name
         try {
             $sales_rep_name = $this->get_sales_rep_name_by_id($sales_rep_id);
@@ -479,6 +483,20 @@ public function add_sales_rep_field_to_checkout() {
     // Save shipping phone
     if (!empty($_POST['shipping_phone'])) {
         update_post_meta($order_id, '_shipping_phone', sanitize_text_field($_POST['shipping_phone']));
+    }
+    // Save the customer the order was placed for (if different from current user)
+    if (!empty($_POST['order_for_customer'])) {
+        $customer_id = intval($_POST['order_for_customer']);
+        $current_user_id = get_current_user_id();
+        if ($customer_id !== $current_user_id) {
+            update_post_meta($order_id, '_order_placed_by_rep_id', $current_user_id);
+            // Set the order customer to the selected customer
+            $order = wc_get_order($order_id);
+            if ($order) {
+                $order->set_customer_id($customer_id);
+                $order->save();
+            }
+        }
     }
 }
     /**
@@ -657,7 +675,96 @@ public function add_sales_rep_field_to_checkout() {
     
     return []; // Return empty array if no destinations found
 }
- 
-     
-}     
- 
+
+    /**
+     * Add customer selector for sales reps
+     */
+    public function add_customer_selector_for_sales_rep()
+    {
+        // Only show if user is a sales rep or admin
+        $user_id = get_current_user_id();
+        if (!$user_id) {
+            return;
+        }
+
+        $user = get_userdata($user_id);
+        if (!$user) {
+            return;
+        }
+
+        // Check if user has sales_rep role or is admin
+        $has_sales_rep_role = in_array('sales_rep', (array) $user->roles);
+        $is_admin = user_can($user_id, 'manage_options');
+
+        if (!$has_sales_rep_role && !$is_admin) {
+            return;
+        }
+
+        ?>
+        <div id="customer_selector_field" class="customer-selector-checkout-field" style="display: none;">
+            <label for="order_for_customer"><?php esc_html_e('Customer/Buyer Account', 'woocommerce'); ?> <abbr class="required" title="required">*</abbr></label>
+            <select name="order_for_customer" id="order_for_customer" class="customer-select">
+                <option value=""><?php esc_html_e('Select destination first', 'woocommerce'); ?></option>
+            </select>
+            <small><?php esc_html_e('Select which customer account this order is for.', 'woocommerce'); ?></small>
+        </div>
+        <?php
+    }
+
+    /**
+     * AJAX handler to get customers for a specific destination
+     */
+    public function get_customers_by_destination()
+    {
+        // Verify nonce
+        if (!wp_verify_nonce($_POST['nonce'], 'license_management_nonce')) {
+            wp_send_json_error(['message' => 'Invalid nonce']);
+        }
+
+        $destination_id = sanitize_text_field($_POST['destination_id']);
+        if (empty($destination_id)) {
+            wp_send_json_error(['message' => 'Missing destination ID']);
+        }
+
+        try {
+            // Query all users who have this destination in their destination_ids
+            $args = [
+                'meta_query' => [
+                    [
+                        'key' => 'destination_ids',
+                        'compare' => 'EXISTS',
+                    ]
+                ],
+                'number' => -1,
+            ];
+
+            $users = get_users($args);
+            $customers = [];
+
+            foreach ($users as $user) {
+                $destination_ids = get_user_meta($user->ID, 'destination_ids', true);
+                if (!empty($destination_ids)) {
+                    $destination_ids = maybe_unserialize($destination_ids);
+                    if (is_array($destination_ids) && in_array($destination_id, $destination_ids)) {
+                        $customers[$user->ID] = $user->display_name . ' (' . $user->user_email . ')';
+                    }
+                }
+            }
+
+            if (empty($customers)) {
+                wp_send_json_error(['message' => 'No customers found for this destination']);
+            }
+
+            wp_send_json_success([
+                'customers' => $customers,
+                'message' => 'Customers loaded successfully'
+            ]);
+
+        } catch (Exception $e) {
+            error_log('Error getting customers: ' . $e->getMessage());
+            wp_send_json_error(['message' => 'Error loading customers']);
+        }
+    }
+
+
+}

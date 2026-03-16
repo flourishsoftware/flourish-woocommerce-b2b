@@ -76,11 +76,12 @@ public function toggle_sales_rep_management_callback() {
     }
     
     public function display_shipping_phone_license_in_admin( $order )
-    { 
+    {
         $shipping_phone = get_post_meta( $order->get_id(), '_shipping_phone', true );
         $destination_text = get_post_meta( $order->get_id(), '_destination_text', true );
         $license = get_post_meta( $order->get_id(), 'license', true );
         $sales_rep_name = get_post_meta( $order->get_id(), '_sales_rep_name', true );
+        $order_placed_by_rep_id = get_post_meta( $order->get_id(), '_order_placed_by_rep_id', true );
 
         if ( $shipping_phone ) {
             echo '<p><strong>' . __( 'Shipping Phone:', 'woocommerce' ) . '</strong> ' . esc_html( $shipping_phone ) . '</p>';
@@ -93,7 +94,14 @@ public function toggle_sales_rep_management_callback() {
         }
         // Display sales rep information
         if ( $sales_rep_name ) {
-        echo '<p><strong>' . __( 'Sales Rep:', 'woocommerce' ) . '</strong> ' . esc_html( $sales_rep_name ).'</p>';
+            echo '<p><strong>' . __( 'Sales Rep:', 'woocommerce' ) . '</strong> ' . esc_html( $sales_rep_name ).'</p>';
+        }
+        // Display if order was placed by a rep for this customer
+        if ( $order_placed_by_rep_id ) {
+            $rep_user = get_userdata( $order_placed_by_rep_id );
+            if ( $rep_user ) {
+                echo '<p><strong>' . __( 'Order Placed By (Rep):', 'woocommerce' ) . '</strong> ' . esc_html( $rep_user->display_name ) . ' (' . esc_html( $rep_user->user_email ) . ')</p>';
+            }
         }
     }
 
