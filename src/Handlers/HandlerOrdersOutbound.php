@@ -47,7 +47,9 @@ class HandlerOrdersOutbound
     function set_cod_order_status_to_draft($status, $order) {
         if($this->woocommerce_order_status === "draft") {
             return 'wc-checkout-draft';
-        } 
+        } elseif($this->woocommerce_order_status === "processing") {
+            return 'processing';
+        }
         return $status;
     }
     
