@@ -10,6 +10,7 @@ use FlourishWooCommercePlugin\Services\ServiceProvider;
 class FlourishWooCommercePlugin
 {
     private static $instance;
+    private $plugin_basename;
 
     public static function get_instance()
     {
@@ -22,9 +23,10 @@ class FlourishWooCommercePlugin
 
     public function init($plugin_basename)
     {
-        register_activation_hook(plugin_basename(__FILE__), [$this, 'activate']);
-        register_deactivation_hook(plugin_basename(__FILE__), [$this, 'deactivate']);
-        register_uninstall_hook(plugin_basename(__FILE__), [$this, 'uninstall']);
+        $this->plugin_basename = $plugin_basename;
+        register_activation_hook($plugin_basename, [$this, 'activate']);
+        register_deactivation_hook($plugin_basename, [$this, 'deactivate']);
+        register_uninstall_hook($plugin_basename, [$this, 'uninstall']);
 
         $existing_settings = get_option('flourish_woocommerce_plugin_settings');
 
