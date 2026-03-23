@@ -150,6 +150,18 @@ class HandlerOrdersOutbound
     public static function create_destination_object($wc_order, $billing_address)
     {
         $order_id = $wc_order->get_id();
+
+        // Try to get the saved destination ID from order meta
+        $destination_id = get_post_meta($order_id, '_destination_id', true);
+
+        // If destination ID exists, return only the ID (per Flourish API rule: "If passing the id field for destination, no other fields may be passed")
+        if (!empty($destination_id)) {
+            return [
+                'id' => $destination_id,
+            ];
+        }
+
+        // Fallback for legacy orders without saved destination ID
         $license_number = $_POST['license'] ?? get_user_meta($order_id, 'license', true);
 
         // Check if $license_number is an array and get the first element
@@ -159,10 +171,16 @@ class HandlerOrdersOutbound
             // If it's not an array, just assign the value directly
             $license_value = $license_number;
         }
-        
+
+        // Try to use saved destination text (preferred), otherwise fall back to address fields
+        $destination_name = get_post_meta($order_id, '_destination_text', true);
+        if (empty($destination_name)) {
+            $destination_name = $wc_order->get_shipping_company() ?: $wc_order->get_billing_company() ?: $wc_order->get_billing_first_name();
+        }
+
         return [
             'type' => 'Dispensary',
-            'name' => $wc_order->get_shipping_company() ?: $wc_order->get_billing_company() ?: $wc_order->get_billing_first_name(),
+            'name' => $destination_name,
             'company_email' => $wc_order->get_billing_email(),
             'company_phone_number' => $wc_order->get_billing_phone(),
             'address_line_1' => $wc_order->get_shipping_address_1() ?: $wc_order->get_billing_address_1(),
