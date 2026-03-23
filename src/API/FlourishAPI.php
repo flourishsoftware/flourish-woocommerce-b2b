@@ -497,45 +497,78 @@ class FlourishAPI
         return false;
     }
 
-     public function fetch_destination_by_facility_name()
-{
-    $all_destinations = [];
-    $offset = 0;
-    $limit = self::API_LIMIT;
-    
-    do {
-        // Fix the API URL construction - there was a syntax error in your original code
-        $api_url = $this->url . "/external/api/v1/destinations?offset=" . $offset . "&limit=" . $limit;
-        $headers = $this->get_headers();
-        
-        // Use the HttpRequestHelper for the API call
-        try {
-            $response_http = HttpRequestHelper::make_request($api_url, 'GET', $headers);
-            $response_data = HttpRequestHelper::validate_response($response_http);
-        } catch (\Exception $e) {
-            throw new \Exception("Error fetching destination by facility_name: " . $e->getMessage());
+    /**
+     * Generate cache key for destinations
+     * Scoped per API URL to avoid collisions if multiple Flourish accounts are configured
+     *
+     * @return string The cache key
+     */
+    private function get_destination_cache_key() {
+        return 'flourish_destinations_' . md5( $this->url );
+    }
+
+    /**
+     * Clear the destination cache
+     * Can be called manually to force a refresh
+     */
+    public function clear_destination_cache() {
+        delete_transient( $this->get_destination_cache_key() );
+    }
+
+    public function fetch_destination_by_facility_name()
+    {
+        // Check for cached result first (6 hour TTL)
+        $cache_key = $this->get_destination_cache_key();
+        $cached_destinations = get_transient( $cache_key );
+
+        if ( false !== $cached_destinations ) {
+            return $cached_destinations;
         }
-        
-        // Check if we got data
-        if (isset($response_data['data']) && is_array($response_data['data']) && count($response_data['data'])) {
-            // Merge current batch with all destinations
-            $all_destinations = array_merge($all_destinations, $response_data['data']);
-            
-            // If we got less than the limit, we've reached the end
-            $has_more_data = count($response_data['data']) == $limit;
-            
-            // Increment offset for next batch
-            $offset += $limit;
-        } else {
-            // No more data
-            $has_more_data = false;
+
+        $all_destinations = [];
+        $offset = 0;
+        $limit = self::API_LIMIT;
+
+        do {
+            // Fix the API URL construction - there was a syntax error in your original code
+            $api_url = $this->url . "/external/api/v1/destinations?offset=" . $offset . "&limit=" . $limit;
+            $headers = $this->get_headers();
+
+            // Use the HttpRequestHelper for the API call
+            try {
+                $response_http = HttpRequestHelper::make_request($api_url, 'GET', $headers);
+                $response_data = HttpRequestHelper::validate_response($response_http);
+            } catch (\Exception $e) {
+                throw new \Exception("Error fetching destination by facility_name: " . $e->getMessage());
+            }
+
+            // Check if we got data
+            if (isset($response_data['data']) && is_array($response_data['data']) && count($response_data['data'])) {
+                // Merge current batch with all destinations
+                $all_destinations = array_merge($all_destinations, $response_data['data']);
+
+                // If we got less than the limit, we've reached the end
+                $has_more_data = count($response_data['data']) == $limit;
+
+                // Increment offset for next batch
+                $offset += $limit;
+            } else {
+                // No more data
+                $has_more_data = false;
+            }
+
+        } while ($has_more_data);
+
+        $result = count($all_destinations) > 0 ? $all_destinations : false;
+
+        // Cache the result for 6 hours (21600 seconds)
+        // Only cache successful responses that return an array
+        if ( is_array( $result ) ) {
+            set_transient( $cache_key, $result, 6 * HOUR_IN_SECONDS );
         }
-        
-    } while ($has_more_data);
-    
-    // Return all destinations or false if none found
-    return count($all_destinations) > 0 ? $all_destinations : false;
-}
+
+        return $result;
+    }
 
     public function fetch_uoms()
     {

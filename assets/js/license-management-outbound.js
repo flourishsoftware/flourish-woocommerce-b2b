@@ -447,8 +447,52 @@ jQuery(function ($) {
             alert('Network error occurred. Please try again.');
         });
     });
- 
-    
 
-    
+    // =================== DESTINATION CACHE REFRESH ===================
+    $('#refresh-destinations-btn').on('click', function(e) {
+        e.preventDefault();
+
+        var $button = $(this);
+        var originalText = $button.text();
+        var originalHtml = $button.html();
+
+        // Show loading state
+        $button.html('<span class="spinner" style="display:inline-block;margin-right:5px;"></span>Refreshing...').prop('disabled', true);
+
+        $.post(ajaxurl, {
+            action: 'refresh_destinations_cache',
+            nonce: licenseData.nonce
+        }, function(response) {
+            $button.html(originalHtml).prop('disabled', false);
+
+            if (response.success) {
+                var newOptions = response.data.options;
+
+                // Clear existing options (keeping the placeholder)
+                var $select = $('#destination_select');
+                $select.find('option:not(:first)').remove();
+
+                // Add new options
+                newOptions.forEach(function(option) {
+                    $select.append(
+                        $('<option></option>')
+                            .attr('value', option.id)
+                            .attr('data-text', option.text)
+                            .text(option.text)
+                    );
+                });
+
+                // Refresh Select2
+                $select.trigger('change');
+
+                alert('Destinations refreshed successfully!');
+            } else {
+                alert('Error: ' + (response.data.message || 'Failed to refresh destinations'));
+            }
+        }).fail(function() {
+            $button.html(originalHtml).prop('disabled', false);
+            alert('Network error occurred. Please try again.');
+        });
+    });
+
 });

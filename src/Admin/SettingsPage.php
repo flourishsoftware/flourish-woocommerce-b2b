@@ -474,9 +474,17 @@ class SettingsPage
         $sanitized_settings['flourish_order_status'] = !empty($settings['flourish_order_status']) ? sanitize_text_field($settings['flourish_order_status']) : 'created';
        // Handle WooCommerce order status for outbound orders
         $sanitized_settings['woocommerce_order_status'] = !empty($settings['woocommerce_order_status']) ? sanitize_text_field($settings['woocommerce_order_status']) : 'draft';
-  
+
         // Default to production API
         $sanitized_settings['url'] = !empty($settings['url']) ? esc_url_raw($settings['url']) : 'https://app.flourishsoftware.com';
+
+        // Clear destination cache if API credentials change
+        $old_url = $this->existing_settings['url'] ?? '';
+        $old_api_key = $this->existing_settings['api_key'] ?? '';
+        if ($sanitized_settings['url'] !== $old_url || $sanitized_settings['api_key'] !== $old_api_key) {
+            delete_transient('flourish_destinations_' . md5($old_url));
+            delete_transient('flourish_destinations_' . md5($sanitized_settings['url']));
+        }
 
         // Sanitize the brands
         $sanitized_settings['brands'] = !empty($settings['brands']) ? array_map('sanitize_text_field', $settings['brands']) : [];

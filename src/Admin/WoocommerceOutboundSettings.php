@@ -21,8 +21,9 @@ class WoocommerceOutboundSettings
         // Hook to add license fields in the user profile
         add_action( 'show_user_profile', [ $this, 'add_license_field_to_user_edit' ] );
         add_action( 'edit_user_profile', [ $this, 'add_license_field_to_user_edit' ] ); 
-        add_action('wp_ajax_update_user_destinations', [$this, 'update_user_destinations_callback']); 
-        add_action('wp_ajax_update_destination_selection_toggle', [$this, 'update_destination_selection_toggle_callback']); 
+        add_action('wp_ajax_update_user_destinations', [$this, 'update_user_destinations_callback']);
+        add_action('wp_ajax_update_destination_selection_toggle', [$this, 'update_destination_selection_toggle_callback']);
+        add_action('wp_ajax_refresh_destinations_cache', [$this, 'refresh_destinations_cache_callback']);
         // Add this AJAX hook to your register_hooks() method:
         add_action('wp_ajax_toggle_sales_rep_management', [$this, 'toggle_sales_rep_management_callback']);
         // Sales Rep Management AJAX hooks
@@ -302,7 +303,65 @@ public function update_user_sales_reps_callback() {
         wp_send_json_error(['message' => 'Error updating destinations: ' . $e->getMessage()]);
     }
 }
- 
+
+    /**
+     * Refresh destination cache and return updated destination list via AJAX
+     */
+    public function refresh_destinations_cache_callback() {
+        // Check nonce
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'license_management_nonce')) {
+            wp_send_json_error(['message' => 'Invalid nonce']);
+            return;
+        }
+
+        // Check user capabilities
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Insufficient permissions']);
+            return;
+        }
+
+        try {
+            // Get API credentials
+            $api_key = $this->existing_settings['api_key'] ?? '';
+            $url = $this->existing_settings['url'] ?? '';
+            $facility_id = $this->existing_settings['facility_id'] ?? '';
+
+            if (empty($api_key) || empty($url) || empty($facility_id)) {
+                wp_send_json_error(['message' => 'API credentials not configured']);
+                return;
+            }
+
+            // Initialize API and clear cache
+            $flourish_api = new FlourishAPI($api_key, $url, $facility_id);
+            $flourish_api->clear_destination_cache();
+
+            // Fetch fresh destinations
+            $destination_options = $flourish_api->get_destination_options();
+
+            if (empty($destination_options)) {
+                wp_send_json_error(['message' => 'No destinations available from API']);
+                return;
+            }
+
+            // Format response for Select2
+            $options = [];
+            foreach ($destination_options as $id => $display_text) {
+                $options[] = [
+                    'id' => $id,
+                    'text' => $display_text
+                ];
+            }
+
+            wp_send_json_success([
+                'message' => 'Destinations refreshed successfully',
+                'options' => $options
+            ]);
+        } catch (Exception $e) {
+            error_log('Error refreshing destinations: ' . $e->getMessage());
+            wp_send_json_error(['message' => 'Error refreshing destinations: ' . $e->getMessage()]);
+        }
+    }
+
         /**
      * Get sales reps from Flourish API - sorted alphabetically
      */
@@ -429,9 +488,12 @@ public function update_user_sales_reps_callback() {
                                 </option>
                             <?php endforeach; ?>
                         </select>
+                        <button type="button" id="refresh-destinations-btn" class="button" style="margin-left: 10px;">
+                            <?php esc_html_e('Refresh Destinations', 'woocommerce'); ?>
+                        </button>
                     </div>
                     <p class="description">
-                        <?php 
+                        <?php
                         if (empty($destination_options)) {
                             esc_html_e('No destinations available from API.', 'woocommerce');
                         } else {
