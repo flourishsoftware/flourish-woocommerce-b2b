@@ -246,29 +246,48 @@ class FlourishAPI
      * Fetch facility by facility_id
      */
     public function fetch_facility_config($facility_id)
-    {
-        $facility_config = false;
-        $api_url = $this->url . "/external/api/v1/facilities/{$facility_id}";
-        $headers = $this->get_headers();
+		{
+			$facility_config = false;
+			$api_url = $this->url . "/external/api/v1/facilities/{$facility_id}";
+			$headers = $this->get_headers();
 
-        // Use the HttpRequestHelper for the API call
-        try
-        {
-         $response_http = HttpRequestHelper::make_request($api_url, 'GET', $headers);
-         $response_data = HttpRequestHelper::validate_response($response_http);
-        } catch (\Exception $e) {
-            if (isset($response_http['http_code']) && ($response_http['http_code'] == 400 || $response_http['http_code'] == 401)) {
-                return true; // Return true for 400 error
-            }
-            throw new \Exception("Error fetching facility config: " . $e->getMessage());
-        }
+			try {
+				$response_http = HttpRequestHelper::make_request($api_url, 'GET', $headers);
+				$response_data = HttpRequestHelper::validate_response($response_http);
+			} catch (\Exception $e) {
+				// Handle specific HTTP codes gracefully
+				if (isset($response_http['http_code'])) {
+					$code = $response_http['http_code'];
 
-        if (isset($response_data['data']) && is_array($response_data['data'])) {
-            $facility_config = $response_data['data'];
-        } 
+					if ($code == 400 || $code == 401) {
+						return [
+							'error' => true,
+							'message' => __('Invalid or expired Flourish API key. Please reauthenticate in plugin settings.', 'flourish-woocommerce')
+						];
+					}
 
-       return $facility_config;
-    }
+					if ($code == 403) {
+						return [
+							'error' => true,
+							'message' => __('Your Flourish API key is not active. Please contact Flourish support to reactivate it.', 'flourish-woocommerce')
+						];
+					}
+				}
+
+				// Generic fallback error
+				return [
+					'error' => true,
+					'message' => __('Error connecting to Flourish API: ', 'flourish-woocommerce') . $e->getMessage()
+				];
+			}
+
+			if (isset($response_data['data']) && is_array($response_data['data'])) {
+				$facility_config = $response_data['data'];
+			}
+
+			return $facility_config;
+		}
+
 
     /**
      * Fetch inventory
