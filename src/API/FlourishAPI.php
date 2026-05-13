@@ -257,10 +257,8 @@ class FlourishAPI
          $response_http = HttpRequestHelper::make_request($api_url, 'GET', $headers);
          $response_data = HttpRequestHelper::validate_response($response_http);
         } catch (\Exception $e) {
-            if (isset($response_http['http_code']) && ($response_http['http_code'] == 400 || $response_http['http_code'] == 401)) {
-                return true; // Return true for 400 error
-            }
-            throw new \Exception("Error fetching facility config: " . $e->getMessage());
+            error_log("Error fetching facility config: " . $e->getMessage());
+            return false;
         }
 
         if (isset($response_data['data']) && is_array($response_data['data'])) {

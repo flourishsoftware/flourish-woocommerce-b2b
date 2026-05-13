@@ -416,8 +416,13 @@ class SettingsPage
      */
     private function is_sales_rep_required($facility_id)
     {
-        $facility_config = $this->get_facility_config($facility_id);
-        return $facility_config['sales_rep_required_for_outbound'] ?? false;
+        try {
+            $facility_config = $this->get_facility_config($facility_id);
+            return $facility_config['sales_rep_required_for_outbound'] ?? false;
+        } catch (\Exception $e) {
+            error_log('Error checking sales rep requirement: ' . $e->getMessage());
+            return false;
+        }
     }
 
     /**
