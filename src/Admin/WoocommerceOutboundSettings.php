@@ -426,16 +426,59 @@ public function update_user_sales_reps_callback() {
     
     try {
         // Initialize API - UPDATED: New constructor without username
-        $flourish_api = new FlourishAPI($api_key, $url, $facility_id); 
+        $flourish_api = new FlourishAPI($api_key, $url, $facility_id);
         $destination_options = $flourish_api->get_destination_options();
         $sales_reps = $this->get_sales_reps();
     } catch (Exception $e) {
         error_log('Error loading data for user edit: ' . $e->getMessage());
         // Continue with empty arrays - the UI will show appropriate messages
     }
-        
+
+    // Signup-form data captured by OutboundFrontend at registration
+    $signup_job_title    = get_user_meta($user->ID, 'job_title', true);
+    $signup_company_name = get_user_meta($user->ID, 'company_name', true);
+    $signup_phone        = get_user_meta($user->ID, 'phone', true);
+    $signup_license      = get_user_meta($user->ID, 'license', true);
+    $signup_license_text = is_array($signup_license) ? implode(', ', $signup_license) : (string) $signup_license;
+    $has_signup_data     = $signup_job_title || $signup_company_name || $signup_phone || $signup_license_text;
+
         ?>
-       
+
+        <?php if ($has_signup_data) : ?>
+        <!-- Signup Information (captured at registration) -->
+        <h3><?php esc_html_e('Signup Information', 'woocommerce'); ?></h3>
+        <p class="description">
+            <?php esc_html_e('Details the customer entered when registering. Use this to provision destinations in Flourish.', 'woocommerce'); ?>
+        </p>
+        <table class="form-table">
+            <?php if ($signup_company_name) : ?>
+            <tr>
+                <th><?php esc_html_e('Company Name', 'woocommerce'); ?></th>
+                <td><?php echo esc_html($signup_company_name); ?></td>
+            </tr>
+            <?php endif; ?>
+            <?php if ($signup_job_title) : ?>
+            <tr>
+                <th><?php esc_html_e('Job Title', 'woocommerce'); ?></th>
+                <td><?php echo esc_html($signup_job_title); ?></td>
+            </tr>
+            <?php endif; ?>
+            <?php if ($signup_phone) : ?>
+            <tr>
+                <th><?php esc_html_e('Phone', 'woocommerce'); ?></th>
+                <td><?php echo esc_html($signup_phone); ?></td>
+            </tr>
+            <?php endif; ?>
+            <?php if ($signup_license_text) : ?>
+            <tr>
+                <th><?php esc_html_e('License Number(s)', 'woocommerce'); ?></th>
+                <td>
+                    <code style="font-size: 13px; padding: 4px 8px; background: #f0f0f1;"><?php echo esc_html($signup_license_text); ?></code>
+                </td>
+            </tr>
+            <?php endif; ?>
+        </table>
+        <?php endif; ?>
 
         <!-- Destination Management Section -->
         <h3><?php esc_html_e('Destination Management', 'woocommerce'); ?></h3>
